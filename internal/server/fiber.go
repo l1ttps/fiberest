@@ -7,12 +7,22 @@ import (
 	"fiberest/internal/configs"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/cors"
 	"go.uber.org/fx"
 )
 
 // NewFiberApp creates a new Fiber app instance without starting it
 func NewFiberApp() *fiber.App {
 	app := fiber.New()
+
+	// Configure CORS middleware
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		AllowCredentials: false,
+	}))
+
 	return app
 }
 
