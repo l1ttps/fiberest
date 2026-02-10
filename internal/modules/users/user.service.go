@@ -16,8 +16,8 @@ type Service struct {
 	dbService *database.DatabaseService
 }
 
-// NewService creates a new user service instance
-func NewService(dbService *database.DatabaseService) *Service {
+// UserService creates a new user service instance
+func UserService(dbService *database.DatabaseService) *Service {
 	return &Service{
 		dbService: dbService,
 	}
@@ -38,30 +38,23 @@ func (s *Service) hashPassword(password string) (string, error) {
 	return string(hashedBytes), nil
 }
 
-// CreateAdmin creates a new admin user and returns response
+// CreateAdmin creates a new admin user and returns response.
+// This function can only be called when no admin exists in the system.
 func (s *Service) CreateAdmin(req dto.InitAdminRequest) (*dto.InitAdminResponse, error) {
-	// Check if email already exists
-	var existingUser models.User
-	if err := s.getDB().Where("email = ?", req.Email).First(&existingUser).Error; err == nil {
-		return nil, fmt.Errorf("user with email %s already exists", req.Email)
+	// Check if any admin already exists in the system
+	var adminCount int64
+	if err := s.getDB().Model(&models.User{}).Where("role = ?", models.RoleAdmin).Count(&adminCount).Error; err != nil {
+		return nil, fmt.Errorf("failed to check existing admin: %w", err)
+	}
+	if adminCount > 0 {
+		return nil, fmt.Errorf("admin user already exists")
 	}
 
-	// Hash the password
-	hashedPassword, err := s.hashPassword(req.Password)
+	// Reuse CreateUser to create admin user
+	user, err := s.CreateUser(req.Email, "Admin", req.Password, models.RoleAdmin)
+
 	if err != nil {
 		return nil, err
-	}
-
-	// Create the admin user
-	user := &models.User{
-		Email:    req.Email,
-		Name:     req.Email, // Default name is email, can be updated later
-		Password: hashedPassword,
-		Role:     models.RoleAdmin,
-	}
-
-	if err := s.getDB().Create(user).Error; err != nil {
-		return nil, fmt.Errorf("failed to create admin user: %w", err)
 	}
 
 	// Build response
@@ -75,8 +68,8 @@ func (s *Service) CreateAdmin(req dto.InitAdminRequest) (*dto.InitAdminResponse,
 	return response, nil
 }
 
-// CreateUser creates a new regular user
-func (s *Service) CreateUser(email string, name string, password string) (*models.User, error) {
+// CreateUser creates a new user with specified role
+func (s *Service) CreateUser(email string, name string, password string, role models.UserRole) (*models.User, error) {
 	// Check if email already exists
 	var existingUser models.User
 	if err := s.getDB().Where("email = ?", email).First(&existingUser).Error; err == nil {
@@ -94,7 +87,7 @@ func (s *Service) CreateUser(email string, name string, password string) (*model
 		Email:    email,
 		Name:     name,
 		Password: hashedPassword,
-		Role:     models.RoleUser,
+		Role:     role,
 	}
 
 	if err := s.getDB().Create(user).Error; err != nil {

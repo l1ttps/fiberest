@@ -13,16 +13,16 @@ type Controller struct {
 	service *Service
 }
 
-// NewController creates a new user controller
-func NewController(app *fiber.App, service *Service) *Controller {
+// UserController creates a new user controller
+func UserController(app *fiber.App, service *Service) *Controller {
 	return &Controller{
 		service: service,
 	}
 }
 
-// RegisterUserRoutes is invoked by fx to register user routes
+// UserRoutes is invoked by fx to register user routes
 // This follows the same pattern as RegisterFiberLifecycle in server module
-func RegisterUserRoutes(app *fiber.App, controller *Controller) {
+func UserRoutes(app *fiber.App, controller *Controller) {
 	// Create a route group for /users
 	users := app.Group("/users")
 
