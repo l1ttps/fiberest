@@ -2,6 +2,7 @@ package main
 
 import (
 	"fiberest/internal/configs"
+	"fiberest/internal/database"
 	"fiberest/internal/modules"
 	"fiberest/internal/server"
 
@@ -11,6 +12,7 @@ import (
 func main() {
 	app := fx.New(
 		configs.Module,
+		database.Module,
 		server.Module,
 		modules.Module,
 	)
