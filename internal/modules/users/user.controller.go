@@ -1,0 +1,50 @@
+package users
+
+import (
+	"fiberest/internal/common/validators"
+	"fiberest/internal/modules/users/dto"
+
+	"github.com/gofiber/fiber/v3"
+)
+
+// Controller handles user-related requests
+type Controller struct {
+	service *Service
+}
+
+// NewController creates a new user controller
+func NewController(app *fiber.App, service *Service) *Controller {
+	return &Controller{
+		service: service,
+	}
+}
+
+// RegisterUserRoutes is invoked by fx to register user routes
+// This follows the same pattern as RegisterFiberLifecycle in server module
+func RegisterUserRoutes(app *fiber.App, controller *Controller) {
+	// Create a route group for /users
+	users := app.Group("/users")
+
+	// POST /users/init - Initialize admin account
+	users.Post("/init", controller.initAdmin)
+}
+
+// initAdmin handles POST /users/init request
+// It creates a new admin user with the provided email and password
+func (c *Controller) initAdmin(ctx fiber.Ctx) error {
+	var req dto.InitAdminRequest
+
+	// Parse and validate request in one step
+	if err := validators.ParseAndValidate(ctx, &req); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
+
+	// Call service to create admin and get response
+	response, error := c.service.CreateAdmin(req)
+	if error != nil {
+		return validators.ResponseError(ctx, error)
+	}
+
+	// Return success response
+	return ctx.Status(fiber.StatusCreated).JSON(response)
+}

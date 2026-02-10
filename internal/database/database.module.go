@@ -1,6 +1,8 @@
 package database
 
 import (
+	"fiberest/internal/modules/users/models"
+
 	"go.uber.org/fx"
 )
 
@@ -8,4 +10,8 @@ import (
 var Module = fx.Options(
 	fx.Provide(NewDatabaseService),
 	fx.Invoke(func(service *DatabaseService) {}),
+	fx.Invoke(func(dbService *DatabaseService) error {
+		// Auto-migrate User model to create the users table
+		return dbService.GetDB().AutoMigrate(&models.User{})
+	}),
 )
