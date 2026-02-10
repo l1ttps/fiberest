@@ -3,6 +3,7 @@ package users
 import (
 	"fiberest/internal/common/validators"
 	"fiberest/internal/modules/users/dto"
+	"fiberest/pkg/http_error"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -41,8 +42,9 @@ func (c *Controller) initAdmin(ctx fiber.Ctx) error {
 
 	// Call service to create admin and get response
 	response, error := c.service.CreateAdmin(req)
+
 	if error != nil {
-		return validators.ResponseError(ctx, error)
+		return http_error.BadRequest(ctx, error.Error())
 	}
 
 	// Return success response

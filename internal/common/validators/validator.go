@@ -2,6 +2,7 @@
 package validators
 
 import (
+	"fiberest/pkg/http_error"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
@@ -19,12 +20,6 @@ type ValidationError struct {
 
 // ValidationErrors is a collection of validation errors
 type ValidationErrors []ValidationError
-
-// ErrorResponse represents an error response
-type ErrorResponse struct {
-	Status  int    `json:"status"`
-	Message string `json:"message"`
-}
 
 // Error implements the error interface
 func (ve ValidationErrors) Error() string {
@@ -86,7 +81,7 @@ func ParseAndValidate(ctx fiber.Ctx, dest interface{}) error {
 }
 
 func ResponseError(ctx fiber.Ctx, err error) error {
-	return ctx.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
+	return ctx.Status(fiber.StatusBadRequest).JSON(http_error.ErrorResponse{
 		Status:  fiber.StatusBadRequest,
 		Message: err.Error(),
 	})
