@@ -23,6 +23,17 @@ func NewFiberApp() *fiber.App {
 		AllowCredentials: false,
 	}))
 
+	// Handle 404 for unmatched routes
+	app.All("/*", func(c fiber.Ctx) error {
+		method := c.Method()
+		path := c.Path()
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"status":  fiber.StatusNotFound,
+			"error":   "Not Found",
+			"message": fmt.Sprintf("Cannot %s %s", method, path),
+		})
+	})
+
 	return app
 }
 
