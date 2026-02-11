@@ -23,8 +23,13 @@ func NewFiberApp() *fiber.App {
 		AllowCredentials: false,
 	}))
 
-	// Handle 404 for unmatched routes
-	app.All("/*", func(c fiber.Ctx) error {
+	return app
+}
+
+// Register404Handler registers the 404 handler for unmatched routes
+// This must be called AFTER all other routes are registered
+func Register404Handler(app *fiber.App) {
+	app.All("*", func(c fiber.Ctx) error {
 		method := c.Method()
 		path := c.Path()
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -33,8 +38,6 @@ func NewFiberApp() *fiber.App {
 			"message": fmt.Sprintf("Cannot %s %s", method, path),
 		})
 	})
-
-	return app
 }
 
 // RegisterFiberLifecycle registers the Fiber app lifecycle hooks with fx
@@ -44,6 +47,9 @@ func RegisterFiberLifecycle(lc fx.Lifecycle, app *fiber.App, cfg *configs.Config
 
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
+			// Register 404 handler last, after all routes are registered
+			Register404Handler(app)
+
 			fmt.Printf("Starting server on %s...\n", address)
 			// Start server in a goroutine to not block
 			go func() {
