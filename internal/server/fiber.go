@@ -4,13 +4,25 @@ import (
 	"context"
 	"fmt"
 
+	_ "fiberest/docs" // Import swagger docs
 	"fiberest/internal/configs"
 
+	"github.com/gofiber/contrib/v3/swaggo"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"go.uber.org/fx"
 )
 
+// @title Fiberest API
+// @version 1.0
+// @description This is a sample server for a Fiber application.
+// @termsOfService http://swagger.io/terms/
+// @contact.name API Support
+// @contact.email fiber@swagger.io
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+// @host localhost:8080
+// @BasePath /
 // NewFiberApp creates a new Fiber app instance without starting it
 func NewFiberApp() *fiber.App {
 	app := fiber.New()
@@ -22,6 +34,9 @@ func NewFiberApp() *fiber.App {
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		AllowCredentials: false,
 	}))
+
+	// Register Swagger route
+	app.Get("/swagger/*", swaggo.New())
 
 	return app
 }

@@ -31,7 +31,15 @@ func UserRoutes(app *fiber.App, controller *Controller) {
 }
 
 // initAdmin handles POST /users/init request
-// It creates a new admin user with the provided email and password
+// @Summary Initialize admin account
+// @Description Create the first admin account with the provided email and password
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param request body dto.InitAdminRequest true "Admin initialization request"
+// @Success 201 {object} dto.InitAdminResponse
+// @Failure 400 {object} http_error.ErrorResponse
+// @Router /users/init [post]
 func (c *Controller) initAdmin(ctx fiber.Ctx) error {
 	var req dto.InitAdminRequest
 

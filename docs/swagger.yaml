@@ -1,0 +1,86 @@
+basePath: /
+definitions:
+  dto.InitAdminRequest:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 8
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  dto.InitAdminResponse:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      role:
+        type: string
+    type: object
+  http_error.ErrorResponse:
+    properties:
+      message:
+        type: string
+      status:
+        type: integer
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: fiber@swagger.io
+    name: API Support
+  description: This is a sample server for a Fiber application.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Fiberest API
+  version: "1.0"
+paths:
+  /health-check:
+    get:
+      consumes:
+      - text/plain
+      description: Check if the server is running and return "OK"
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Check health
+      tags:
+      - health-check
+  /users/init:
+    post:
+      consumes:
+      - application/json
+      description: Create the first admin account with the provided email and password
+      parameters:
+      - description: Admin initialization request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.InitAdminRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.InitAdminResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+      summary: Initialize admin account
+      tags:
+      - users
+swagger: "2.0"

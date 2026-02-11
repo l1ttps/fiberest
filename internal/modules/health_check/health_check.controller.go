@@ -22,6 +22,13 @@ func (c *Controller) RegisterRoutes() {
 }
 
 // healthCheck handles GET /health-check request
+// @Summary Check health
+// @Description Check if the server is running and return "OK"
+// @Tags health-check
+// @Accept plain
+// @Produce plain
+// @Success 200 {string} string "OK"
+// @Router /health-check [get]
 func (c *Controller) healthCheck(ctx fiber.Ctx) error {
 	result := c.service.CheckHealth()
 	return ctx.SendString(result)
