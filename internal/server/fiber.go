@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	_ "fiberest/docs" // Import swagger docs
+	_ "fiberest/cmd/swag/docs" // Import swagger docs
 	"fiberest/internal/configs"
 
 	"github.com/gofiber/contrib/v3/swaggo"
