@@ -2,7 +2,9 @@ package users
 
 import (
 	"fmt"
+	"math"
 
+	"fiberest/internal/common/types"
 	"fiberest/internal/database"
 	"fiberest/internal/modules/users/dto"
 	"fiberest/internal/modules/users/models"
@@ -125,4 +127,53 @@ func (s *Service) FindByID(id string) (*models.User, error) {
 		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
 	return &user, nil
+}
+
+// GetManyUsers retrieves a paginated list of users with total count.
+// It returns a GetManyResponse containing users, pagination info and total count.
+func (s *Service) GetManyUsers(limit int, page int) (*types.GetManyResponse[dto.UserResponse], error) {
+	// Calculate offset
+	offset := (page - 1) * limit
+
+	// Get total count
+	var total int64
+	if err := s.getDB().Model(&models.User{}).Count(&total).Error; err != nil {
+		return nil, fmt.Errorf("failed to count users: %w", err)
+	}
+
+	// Fetch users with pagination
+	var users []models.User
+	if err := s.getDB().
+		Limit(limit).
+		Offset(offset).
+		Order("created_at DESC").
+		Find(&users).Error; err != nil {
+		return nil, fmt.Errorf("failed to fetch users: %w", err)
+	}
+
+	// Map to response DTOs
+	userResponses := make([]dto.UserResponse, len(users))
+	for i, user := range users {
+		userResponses[i] = dto.UserResponse{
+			ID:    user.ID.String(),
+			Email: user.Email,
+			Name:  user.Name,
+			Role:  string(user.Role),
+		}
+	}
+
+	// Calculate hasNextPage
+	totalPages := int(math.Ceil(float64(total) / float64(limit)))
+	hasNextPage := page < totalPages
+
+	// Build response
+	response := &types.GetManyResponse[dto.UserResponse]{
+		Data:        userResponses,
+		Limit:       limit,
+		Page:        page,
+		HasNextPage: hasNextPage,
+		Total:       total,
+	}
+
+	return response, nil
 }

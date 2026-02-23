@@ -1,4 +1,19 @@
 definitions:
+  dto.GetManyUsersExample:
+    properties:
+      data:
+        items:
+          $ref: '#/definitions/dto.UserResponse'
+        type: array
+      hasNextPage:
+        type: boolean
+      limit:
+        type: integer
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
   dto.InitAdminRequest:
     properties:
       email:
@@ -11,6 +26,17 @@ definitions:
     - password
     type: object
   dto.InitAdminResponse:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      role:
+        type: string
+    type: object
+  dto.UserResponse:
     properties:
       email:
         type: string
@@ -46,6 +72,50 @@ paths:
       summary: Check health
       tags:
       - health-check
+  /users:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a paginated list of all users with pagination metadata
+      parameters:
+      - default: 10
+        description: 'Number of items per page (default: 10, max: 100)'
+        in: query
+        maximum: 100
+        minimum: 1
+        name: limit
+        type: integer
+      - default: 1
+        description: 'Page number (default: 1)'
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - description: Search keyword for filtering users
+        in: query
+        name: search
+        type: string
+      - description: Filter by user role (ADMIN or USER)
+        enum:
+        - ADMIN
+        - USER
+        in: query
+        name: role
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GetManyUsersExample'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+      summary: Get paginated list of users
+      tags:
+      - users
   /users/init:
     post:
       consumes:

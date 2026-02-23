@@ -28,6 +28,9 @@ func UserRoutes(app *fiber.App, controller *Controller) {
 
 	// POST /users/init - Initialize admin account
 	users.Post("/init", controller.initAdmin)
+
+	// GET /users - Get paginated list of users
+	users.Get("/", controller.getManyUsers)
 }
 
 // initAdmin handles POST /users/init request
@@ -57,4 +60,39 @@ func (c *Controller) initAdmin(ctx fiber.Ctx) error {
 
 	// Return success response
 	return ctx.Status(fiber.StatusCreated).JSON(response)
+}
+
+// getManyUsers handles GET /users request
+// @Summary Get paginated list of users
+// @Description Retrieve a paginated list of all users with pagination metadata
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param limit query int false "Number of items per page (default: 10, max: 100)" minimum(1) maximum(100) default(10)
+// @Param page query int false "Page number (default: 1)" minimum(1) default(1)
+// @Param search query string false "Search keyword for filtering users"
+// @Param role query string false "Filter by user role (ADMIN or USER)" Enums(ADMIN, USER)
+// @Success 200 {object} dto.GetManyUsersExample
+// @Failure 400 {object} http_error.ErrorResponse
+// @Router /users [get]
+func (c *Controller) getManyUsers(ctx fiber.Ctx) error {
+	var req dto.GetManyUsersRequest
+
+	// Set default values
+	req.Limit = 10
+	req.Page = 1
+
+	// Parse and validate query parameters
+	if err := validators.ParseAndValidate(ctx, &req); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
+
+	// Call service to get users
+	response, err := c.service.GetManyUsers(req.Limit, req.Page)
+	if err != nil {
+		return http_error.BadRequest(ctx, err.Error())
+	}
+
+	// Return success response
+	return ctx.Status(fiber.StatusOK).JSON(response)
 }
