@@ -131,20 +131,35 @@ func (s *Service) FindByID(id string) (*models.User, error) {
 
 // GetManyUsers retrieves a paginated list of users with total count.
 // It returns a GetManyResponse containing users, pagination info and total count.
-func (s *Service) GetManyUsers(limit int, page int) (*types.GetManyResponse[dto.UserResponse], error) {
+// Supports optional filtering by role and search query (name or email).
+func (s *Service) GetManyUsers(req dto.GetManyUsersRequest) (*types.GetManyResponse[dto.UserResponse], error) {
 	// Calculate offset
-	offset := (page - 1) * limit
+	offset := (req.Page - 1) * req.Limit
 
-	// Get total count
+	// Build base query with optional filters
+	query := s.getDB().Model(&models.User{})
+
+	// Apply role filter if provided
+	if req.Role != "" {
+		query = query.Where("role = ?", req.Role)
+	}
+
+	// Apply search filter if provided (search in name and email, case-insensitive)
+	if req.Search != "" {
+		searchPattern := "%" + req.Search + "%"
+		query = query.Where("name ILIKE ? OR email ILIKE ?", searchPattern, searchPattern)
+	}
+
+	// Get total count with filters applied
 	var total int64
-	if err := s.getDB().Model(&models.User{}).Count(&total).Error; err != nil {
+	if err := query.Count(&total).Error; err != nil {
 		return nil, fmt.Errorf("failed to count users: %w", err)
 	}
 
-	// Fetch users with pagination
+	// Fetch users with pagination and filters
 	var users []models.User
-	if err := s.getDB().
-		Limit(limit).
+	if err := query.
+		Limit(req.Limit).
 		Offset(offset).
 		Order("created_at DESC").
 		Find(&users).Error; err != nil {
@@ -163,14 +178,14 @@ func (s *Service) GetManyUsers(limit int, page int) (*types.GetManyResponse[dto.
 	}
 
 	// Calculate hasNextPage
-	totalPages := int(math.Ceil(float64(total) / float64(limit)))
-	hasNextPage := page < totalPages
+	totalPages := int(math.Ceil(float64(total) / float64(req.Limit)))
+	hasNextPage := req.Page < totalPages
 
 	// Build response
 	response := &types.GetManyResponse[dto.UserResponse]{
 		Data:        userResponses,
-		Limit:       limit,
-		Page:        page,
+		Limit:       req.Limit,
+		Page:        req.Page,
 		HasNextPage: hasNextPage,
 		Total:       total,
 	}

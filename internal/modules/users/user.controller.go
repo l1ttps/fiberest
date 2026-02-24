@@ -78,17 +78,26 @@ func (c *Controller) initAdmin(ctx fiber.Ctx) error {
 func (c *Controller) getManyUsers(ctx fiber.Ctx) error {
 	var req dto.GetManyUsersRequest
 
-	// Set default values
-	req.Limit = 10
-	req.Page = 1
+	// Parse query parameters
+	if err := ctx.Bind().Query(&req); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
 
-	// Parse and validate query parameters
-	if err := validators.ParseAndValidate(ctx, &req); err != nil {
+	// Set default values if not provided
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+	if req.Page <= 0 {
+		req.Page = 1
+	}
+
+	// Validate parsed data
+	if err := validators.ValidateStruct(&req); err != nil {
 		return validators.ResponseError(ctx, err)
 	}
 
 	// Call service to get users
-	response, err := c.service.GetManyUsers(req.Limit, req.Page)
+	response, err := c.service.GetManyUsers(req)
 	if err != nil {
 		return http_error.BadRequest(ctx, err.Error())
 	}

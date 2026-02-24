@@ -25,7 +25,7 @@ type UserResponse struct {
 }
 
 // GetManyUsersRequest extends the common GetManyRequest for user-specific queries.
-// It embeds types.GetManyRequest to inherit pagination fields.
+// It embeds types.GetManyRequest to inherit pagination fields (Limit, Page, Search).
 type GetManyUsersRequest struct {
 	types.GetManyRequest
 	// Role is an optional filter for user role (ADMIN or USER)

@@ -5,7 +5,7 @@ package types
 type GetManyRequest struct {
 	Limit  int    `query:"limit" validate:"min=1,max=100"`
 	Page   int    `query:"page" validate:"min=1"`
-	Search string `query:"search" validate:"omitempty"`
+	Search string `query:"search" validate:"omitempty,max=100"`
 }
 
 // GetManyResponse is a generic pagination response structure
