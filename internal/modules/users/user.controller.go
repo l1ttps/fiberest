@@ -31,6 +31,9 @@ func UserRoutes(app *fiber.App, controller *Controller) {
 
 	// GET /users - Get paginated list of users
 	users.Get("/", controller.getManyUsers)
+
+	// GET /users/:id - Get user by ID
+	users.Get("/:id", controller.getUserByID)
 }
 
 // initAdmin handles POST /users/init request
@@ -104,4 +107,35 @@ func (c *Controller) getManyUsers(ctx fiber.Ctx) error {
 
 	// Return success response
 	return ctx.Status(fiber.StatusOK).JSON(response)
+}
+
+// getUserByID handles GET /users/:id request
+// @Summary Get user by ID
+// @Description Retrieve a single user by their unique ID
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID"
+// @Success 200 {object} models.User
+// @Failure 400 {object} http_error.ErrorResponse
+// @Failure 404 {object} http_error.ErrorResponse
+// @Router /users/{id} [get]
+func (c *Controller) getUserByID(ctx fiber.Ctx) error {
+	// Get user ID from path parameter
+	userID := ctx.Params("id")
+	if userID == "" {
+		return http_error.BadRequest(ctx, "user ID is required")
+	}
+
+	// Call service to find user
+	user, err := c.service.FindByID(userID)
+	if err != nil {
+		if err.Error() == "user not found" {
+			return http_error.NotFound(ctx, "user not found")
+		}
+		return http_error.BadRequest(ctx, err.Error())
+	}
+
+	// Return success response
+	return ctx.Status(fiber.StatusOK).JSON(user)
 }

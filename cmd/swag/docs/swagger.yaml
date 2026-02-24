@@ -54,6 +54,44 @@ definitions:
       status:
         type: integer
     type: object
+  models.User:
+    properties:
+      createdAt:
+        description: |-
+          CreatedAt tracks when the record was created
+          Automatically set by GORM on create
+        type: string
+      email:
+        description: |-
+          Email is the unique identifier for login
+          Must be unique and not null
+        type: string
+      id:
+        description: |-
+          ID is the primary key using UUID v4 format
+          GORM tag ensures it's stored as uuid type in PostgreSQL with primary key constraint
+        type: string
+      name:
+        description: Name is the display name of the user
+        type: string
+      role:
+        allOf:
+        - $ref: '#/definitions/models.UserRole'
+        description: Role determines user permissions (ADMIN or USER)
+      updatedAt:
+        description: |-
+          UpdatedAt tracks when the record was last modified
+          Automatically updated by GORM on save/update
+        type: string
+    type: object
+  models.UserRole:
+    enum:
+    - ADMIN
+    - USER
+    type: string
+    x-enum-varnames:
+    - RoleAdmin
+    - RoleUser
 info:
   contact: {}
 paths:
@@ -114,6 +152,35 @@ paths:
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
       summary: Get paginated list of users
+      tags:
+      - users
+  /users/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve a single user by their unique ID
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+      summary: Get user by ID
       tags:
       - users
   /users/init:

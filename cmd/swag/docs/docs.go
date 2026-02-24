@@ -141,6 +141,50 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/users/{id}": {
+            "get": {
+                "description": "Retrieve a single user by their unique ID",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Get user by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.User"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http_error.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http_error.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -227,6 +271,50 @@ const docTemplate = `{
                     "type": "integer"
                 }
             }
+        },
+        "models.User": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "description": "CreatedAt tracks when the record was created\nAutomatically set by GORM on create",
+                    "type": "string"
+                },
+                "email": {
+                    "description": "Email is the unique identifier for login\nMust be unique and not null",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID is the primary key using UUID v4 format\nGORM tag ensures it's stored as uuid type in PostgreSQL with primary key constraint",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Name is the display name of the user",
+                    "type": "string"
+                },
+                "role": {
+                    "description": "Role determines user permissions (ADMIN or USER)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.UserRole"
+                        }
+                    ]
+                },
+                "updatedAt": {
+                    "description": "UpdatedAt tracks when the record was last modified\nAutomatically updated by GORM on save/update",
+                    "type": "string"
+                }
+            }
+        },
+        "models.UserRole": {
+            "type": "string",
+            "enum": [
+                "ADMIN",
+                "USER"
+            ],
+            "x-enum-varnames": [
+                "RoleAdmin",
+                "RoleUser"
+            ]
         }
     }
 }`
