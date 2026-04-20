@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 
+	"fiberest/internal/common/auth"
 	"fiberest/internal/common/types"
 	"fiberest/internal/database"
 	"fiberest/internal/modules/users/dto"
@@ -29,6 +30,8 @@ type UserService interface {
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
 	FindByID(ctx context.Context, id string) (*models.User, error)
 	GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest) (*types.GetManyResponse[dto.UserResponse], error)
+	Login(ctx context.Context, req dto.LoginRequest) (*dto.TokenResponse, error)
+	RefreshToken(ctx context.Context, req dto.RefreshTokenRequest) (*dto.TokenResponse, error)
 }
 
 // service handles user-related business logic and responses
@@ -212,4 +215,57 @@ func (s *service) GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest)
 	}
 
 	return response, nil
+}
+
+// generateTokenPair creates a pair of access and refresh tokens for a user
+func (s *service) generateTokenPair(user *models.User) (*dto.TokenResponse, error) {
+	accessToken, err := auth.GenerateToken(user.ID.String(), string(user.Role), types.AccessTokenDuration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	}
+
+	refreshToken, err := auth.GenerateToken(user.ID.String(), string(user.Role), types.RefreshTokenDuration)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+
+	return &dto.TokenResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	}, nil
+}
+
+// Login authenticates user and returns a token pair
+func (s *service) Login(ctx context.Context, req dto.LoginRequest) (*dto.TokenResponse, error) {
+	user, err := s.FindByEmail(ctx, req.Email)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, fmt.Errorf("invalid email or password")
+		}
+		return nil, err
+	}
+
+	if !s.VerifyPassword(user.Password, req.Password) {
+		return nil, fmt.Errorf("invalid email or password")
+	}
+
+	return s.generateTokenPair(user)
+}
+
+// RefreshToken validates a refresh token and returns a new token pair
+func (s *service) RefreshToken(ctx context.Context, req dto.RefreshTokenRequest) (*dto.TokenResponse, error) {
+	claims, err := auth.ValidateToken(req.RefreshToken)
+	if err != nil {
+		return nil, fmt.Errorf("invalid refresh token: %w", err)
+	}
+
+	user, err := s.FindByID(ctx, claims.UserID)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, err
+	}
+
+	return s.generateTokenPair(user)
 }

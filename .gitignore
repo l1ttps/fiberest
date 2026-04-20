@@ -68,3 +68,4 @@ debug
 
 # Air (live reload) temporary files
 tmp/
+.kilo/plans/*

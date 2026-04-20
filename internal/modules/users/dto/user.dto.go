@@ -33,11 +33,27 @@ type GetManyUsersRequest struct {
 }
 
 // GetManyUsersExample is a concrete type for Swagger documentation
-// This represents the actual response structure returned by GetManyUsers API
 type GetManyUsersExample struct {
 	Data        []UserResponse `json:"data"`
 	Limit       int            `json:"limit"`
 	Page        int            `json:"page"`
 	HasNextPage bool           `json:"hasNextPage"`
 	Total       int64          `json:"total"`
+}
+
+// LoginRequest represents the request body for user login
+type LoginRequest struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required"`
+}
+
+// TokenResponse represents the response containing JWT tokens
+type TokenResponse struct {
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+}
+
+// RefreshTokenRequest represents the request body for token refresh
+type RefreshTokenRequest struct {
+	RefreshToken string `json:"refreshToken" validate:"required"`
 }

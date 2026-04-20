@@ -29,6 +29,12 @@ func UserRoutes(app *fiber.App, controller *Controller) {
 	// POST /users/init - Initialize admin account
 	users.Post("/init", controller.initAdmin)
 
+	// POST /users/login - User login
+	users.Post("/login", controller.login)
+
+	// POST /users/refresh-token - Refresh JWT tokens
+	users.Post("/refresh-token", controller.refreshToken)
+
 	// GET /users - Get paginated list of users
 	users.Get("/", controller.getManyUsers)
 
@@ -141,4 +147,55 @@ func (c *Controller) getUserByID(ctx fiber.Ctx) error {
 
 	// Return success response
 	return ctx.Status(fiber.StatusOK).JSON(user)
+}
+
+// login handles POST /users/login request
+// @Summary User login
+// @Description Authenticate user and return access and refresh tokens
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param request body dto.LoginRequest true "Login request"
+// @Success 200 {object} dto.TokenResponse
+// @Failure 400 {object} http_error.ErrorResponse
+// @Failure 401 {object} http_error.ErrorResponse
+// @Router /users/login [post]
+func (c *Controller) login(ctx fiber.Ctx) error {
+	var req dto.LoginRequest
+
+	if err := validators.ParseAndValidate(ctx, &req); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
+
+	response, err := c.service.Login(ctx.Context(), req)
+	if err != nil {
+		return http_error.BadRequest(ctx, err.Error())
+	}
+
+	return ctx.Status(fiber.StatusOK).JSON(response)
+}
+
+// refreshToken handles POST /users/refresh-token request
+// @Summary Refresh JWT tokens
+// @Description Issue a new pair of tokens using a valid refresh token
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param request body dto.RefreshTokenRequest true "Refresh token request"
+// @Success 200 {object} dto.TokenResponse
+// @Failure 400 {object} http_error.ErrorResponse
+// @Router /users/refresh-token [post]
+func (c *Controller) refreshToken(ctx fiber.Ctx) error {
+	var req dto.RefreshTokenRequest
+
+	if err := validators.ParseAndValidate(ctx, &req); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
+
+	response, err := c.service.RefreshToken(ctx.Context(), req)
+	if err != nil {
+		return http_error.BadRequest(ctx, err.Error())
+	}
+
+	return ctx.Status(fiber.StatusOK).JSON(response)
 }
