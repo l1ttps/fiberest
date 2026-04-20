@@ -7,6 +7,7 @@ import (
 	"math"
 
 	"fiberest/internal/common/auth"
+	"fiberest/internal/common/constants"
 	"fiberest/internal/common/types"
 	"fiberest/internal/database"
 	"fiberest/internal/modules/users/dto"
@@ -219,12 +220,12 @@ func (s *service) GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest)
 
 // generateTokenPair creates a pair of access and refresh tokens for a user
 func (s *service) generateTokenPair(user *models.User) (*dto.TokenResponse, error) {
-	accessToken, err := auth.GenerateToken(user.ID.String(), string(user.Role), types.AccessTokenDuration)
+	accessToken, err := auth.GenerateToken(user.ID.String(), string(user.Role), constants.AccessTokenDuration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
-	refreshToken, err := auth.GenerateToken(user.ID.String(), string(user.Role), types.RefreshTokenDuration)
+	refreshToken, err := auth.GenerateToken(user.ID.String(), string(user.Role), constants.RefreshTokenDuration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
