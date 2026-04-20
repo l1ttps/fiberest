@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"time"
 
-	_ "fiberest/cmd/swag/docs" // Import swagger docs
+	"fiberest/docs" // Import swagger docs
 	"fiberest/internal/configs"
 	"fiberest/internal/middlewares"
 	"fiberest/pkg/http_error"
 
-	"github.com/gofiber/contrib/v3/swaggo"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
+	"github.com/yokeTH/gofiber-scalar/scalar/v3"
 	"go.uber.org/fx"
 )
 
@@ -39,8 +39,16 @@ func NewFiberApp(cfg *configs.Config) *fiber.App {
 		AllowCredentials: false,
 	}))
 
-	// Register Swagger route
-	app.Get("/swagger/*", swaggo.New())
+	// Register Swagger route - use FileContentString to bypass swag.ReadDoc()
+	// This avoids conflict between swag v1 and v2 versions
+	swaggerContent := docs.SwaggerInfo.ReadDoc()
+	app.Get("/docs/*", scalar.New(scalar.Config{
+		FileContentString: swaggerContent,
+		Title:             "Fiberest API Documentation",
+		CacheAge:          3600,
+		ForceOffline:      scalar.ForceOfflineTrue,
+		FallbackCacheAge:  86400,
+	}))
 
 	// Rate limiting middleware
 	app.Use(limiter.New(limiter.Config{

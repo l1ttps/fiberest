@@ -1,21 +1,21 @@
 version: '3'
 
 tasks:
-  swagger:
+  docs:
     cmds:
-      - swag init -g cmd/server/main.go -o cmd/swag/docs
+      - swag init -g cmd/server/main.go -o docs
 
   run:
-    deps: [swagger]
+    deps: [docs]
     cmds:
       - go run cmd/server/main.go
 
   dev:
-    deps: [swagger]
+    deps: [docs]
     cmds:
       - air
 
   build:
-    deps: [swagger]
+    deps: [docs]
     cmds:
       - go build -o bin/server cmd/server/main.go

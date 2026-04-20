@@ -13,8 +13,8 @@ import (
 
 // publicRoutes defines the list of paths that do not require authentication
 var publicRoutes = []string{
+	"health-check",
 	"/users/login",
-	"/swagger*",
 	"/admin/init",
 }
 
