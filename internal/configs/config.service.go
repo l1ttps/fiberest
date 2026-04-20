@@ -6,7 +6,6 @@ import (
 
 // Config holds all application configurations
 type Config struct {
-	Port string
 }
 
 // NewConfig creates a new Config instance using Viper
@@ -19,9 +18,7 @@ func NewConfig() (*Config, error) {
 	viper.SetConfigFile(".env")
 	_ = viper.ReadInConfig() // Ignore error if .env doesn't exist
 
-	config := &Config{
-		Port: viper.GetString("PORT"),
-	}
+	config := &Config{}
 
 	return config, nil
 }

@@ -2,9 +2,11 @@ package users
 
 import (
 	"errors"
+	"fiberest/internal/common/constants"
 	"fiberest/internal/common/validators"
 	"fiberest/internal/modules/users/dto"
 	"fiberest/pkg/http_error"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -172,6 +174,23 @@ func (c *Controller) login(ctx fiber.Ctx) error {
 		return http_error.BadRequest(ctx, err.Error())
 	}
 
+	ctx.Cookie(&fiber.Cookie{
+		Name:     "access_token",
+		Value:    response.AccessToken,
+		Expires:  time.Now().Add(constants.AccessTokenDuration),
+		HTTPOnly: true,
+		Secure:   true,
+		SameSite: "Lax",
+	})
+	ctx.Cookie(&fiber.Cookie{
+		Name:     "refresh_token",
+		Value:    response.RefreshToken,
+		Expires:  time.Now().Add(constants.RefreshTokenDuration),
+		HTTPOnly: true,
+		Secure:   true,
+		SameSite: "Lax",
+	})
+
 	return ctx.Status(fiber.StatusOK).JSON(response)
 }
 
@@ -196,6 +215,23 @@ func (c *Controller) refreshToken(ctx fiber.Ctx) error {
 	if err != nil {
 		return http_error.BadRequest(ctx, err.Error())
 	}
+
+	ctx.Cookie(&fiber.Cookie{
+		Name:     "access_token",
+		Value:    response.AccessToken,
+		Expires:  time.Now().Add(constants.AccessTokenDuration),
+		HTTPOnly: true,
+		Secure:   true,
+		SameSite: "Lax",
+	})
+	ctx.Cookie(&fiber.Cookie{
+		Name:     "refresh_token",
+		Value:    response.RefreshToken,
+		Expires:  time.Now().Add(constants.RefreshTokenDuration),
+		HTTPOnly: true,
+		Secure:   true,
+		SameSite: "Lax",
+	})
 
 	return ctx.Status(fiber.StatusOK).JSON(response)
 }

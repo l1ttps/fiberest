@@ -7,6 +7,7 @@ import (
 
 	_ "fiberest/cmd/swag/docs" // Import swagger docs
 	"fiberest/internal/configs"
+	"fiberest/internal/middlewares"
 
 	"github.com/gofiber/contrib/v3/swaggo"
 	"github.com/gofiber/fiber/v3"
@@ -25,7 +26,7 @@ import (
 // @host localhost:8080
 // @BasePath /
 // NewFiberApp creates a new Fiber app instance without starting it
-func NewFiberApp() *fiber.App {
+func NewFiberApp(cfg *configs.Config) *fiber.App {
 	app := fiber.New()
 
 	// Configure CORS middleware
@@ -35,6 +36,9 @@ func NewFiberApp() *fiber.App {
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		AllowCredentials: false,
 	}))
+
+	// Global AuthGuard middleware
+	app.Use(middlewares.AuthGuard(cfg))
 
 	// Register Swagger route
 	app.Get("/swagger/*", swaggo.New())
