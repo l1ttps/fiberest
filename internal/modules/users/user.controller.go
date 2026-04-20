@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fiberest/internal/common/constants"
 	"fiberest/internal/common/validators"
+	"fiberest/internal/middlewares"
 	"fiberest/internal/modules/users/dto"
 	"fiberest/pkg/http_error"
 	"time"
@@ -32,10 +33,10 @@ func UserRoutes(app *fiber.App, controller *Controller) {
 	users.Post("/init", controller.initAdmin)
 
 	// POST /users/login - User login
-	users.Post("/login", controller.login)
+	users.Post("/login", middlewares.Limiter(5, 60), controller.login)
 
 	// POST /users/refresh-token - Refresh JWT tokens
-	users.Post("/refresh-token", controller.refreshToken)
+	users.Post("/refresh-token", middlewares.Limiter(3, 60), controller.refreshToken)
 
 	// GET /users - Get paginated list of users
 	users.Get("/", controller.getManyUsers)

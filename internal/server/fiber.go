@@ -8,6 +8,7 @@ import (
 	_ "fiberest/cmd/swag/docs" // Import swagger docs
 	"fiberest/internal/configs"
 	"fiberest/internal/middlewares"
+	"fiberest/pkg/http_error"
 
 	"github.com/gofiber/contrib/v3/swaggo"
 	"github.com/gofiber/fiber/v3"
@@ -45,15 +46,8 @@ func NewFiberApp(cfg *configs.Config) *fiber.App {
 	app.Use(limiter.New(limiter.Config{
 		Max:        20,
 		Expiration: 1 * time.Second,
-		KeyGenerator: func(c fiber.Ctx) string {
-			return c.Get("x-forwarded-for")
-		},
 		LimitReached: func(c fiber.Ctx) error {
-			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
-				"status":  fiber.StatusTooManyRequests,
-				"error":   "Too Many Requests",
-				"message": "Rate limit reached, please try again later",
-			})
+			return http_error.TooManyRequests(c, "Rate limit reached, please try again later")
 		},
 	}))
 

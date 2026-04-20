@@ -1,4 +1,4 @@
-version: "3"
+version: '3'
 
 tasks:
   swagger:
@@ -13,7 +13,7 @@ tasks:
   dev:
     deps: [swagger]
     cmds:
-      - go run cmd/server/main.go
+      - air
 
   build:
     deps: [swagger]
