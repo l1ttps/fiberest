@@ -1,6 +1,7 @@
 package users
 
 import (
+	"errors"
 	"fiberest/internal/common/validators"
 	"fiberest/internal/modules/users/dto"
 	"fiberest/pkg/http_error"
@@ -10,18 +11,17 @@ import (
 
 // Controller handles user-related requests
 type Controller struct {
-	service *Service
+	service UserService
 }
 
-// UserController creates a new user controller
-func UserController(app *fiber.App, service *Service) *Controller {
+// NewController creates a new user controller
+func NewController(app *fiber.App, service UserService) *Controller {
 	return &Controller{
 		service: service,
 	}
 }
 
 // UserRoutes is invoked by fx to register user routes
-// This follows the same pattern as RegisterFiberLifecycle in server module
 func UserRoutes(app *fiber.App, controller *Controller) {
 	// Create a route group for /users
 	users := app.Group("/users")
@@ -55,10 +55,13 @@ func (c *Controller) initAdmin(ctx fiber.Ctx) error {
 	}
 
 	// Call service to create admin and get response
-	response, error := c.service.CreateAdmin(req)
+	response, err := c.service.CreateAdmin(ctx.Context(), req)
 
-	if error != nil {
-		return http_error.BadRequest(ctx, error.Error())
+	if err != nil {
+		if errors.Is(err, ErrAdminExists) {
+			return http_error.BadRequest(ctx, err.Error())
+		}
+		return http_error.InternalServerError(ctx, err.Error())
 	}
 
 	// Return success response
@@ -100,9 +103,9 @@ func (c *Controller) getManyUsers(ctx fiber.Ctx) error {
 	}
 
 	// Call service to get users
-	response, err := c.service.GetManyUsers(req)
+	response, err := c.service.GetManyUsers(ctx.Context(), req)
 	if err != nil {
-		return http_error.BadRequest(ctx, err.Error())
+		return http_error.InternalServerError(ctx, err.Error())
 	}
 
 	// Return success response
@@ -128,12 +131,12 @@ func (c *Controller) getUserByID(ctx fiber.Ctx) error {
 	}
 
 	// Call service to find user
-	user, err := c.service.FindByID(userID)
+	user, err := c.service.FindByID(ctx.Context(), userID)
 	if err != nil {
-		if err.Error() == "user not found" {
-			return http_error.NotFound(ctx, "user not found")
+		if errors.Is(err, ErrUserNotFound) {
+			return http_error.NotFound(ctx, err.Error())
 		}
-		return http_error.BadRequest(ctx, err.Error())
+		return http_error.InternalServerError(ctx, err.Error())
 	}
 
 	// Return success response

@@ -1,6 +1,8 @@
 package users
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"math"
 
@@ -13,25 +15,41 @@ import (
 	"gorm.io/gorm"
 )
 
-// Service handles user-related business logic and responses
-type Service struct {
+var (
+	ErrUserNotFound      = errors.New("user not found")
+	ErrUserAlreadyExists = errors.New("user already exists")
+	ErrAdminExists       = errors.New("admin user already exists")
+)
+
+// UserService defines the business logic for user management
+type UserService interface {
+	CreateAdmin(ctx context.Context, req dto.InitAdminRequest) (*dto.InitAdminResponse, error)
+	CreateUser(ctx context.Context, email string, name string, password string, role models.UserRole) (*models.User, error)
+	VerifyPassword(hashedPassword string, plainPassword string) bool
+	FindByEmail(ctx context.Context, email string) (*models.User, error)
+	FindByID(ctx context.Context, id string) (*models.User, error)
+	GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest) (*types.GetManyResponse[dto.UserResponse], error)
+}
+
+// service handles user-related business logic and responses
+type service struct {
 	dbService *database.DatabaseService
 }
 
-// UserService creates a new user service instance
-func UserService(dbService *database.DatabaseService) *Service {
-	return &Service{
+// NewService creates a new user service instance
+func NewService(dbService *database.DatabaseService) UserService {
+	return &service{
 		dbService: dbService,
 	}
 }
 
-// getDB returns the GORM database instance
-func (s *Service) getDB() *gorm.DB {
-	return s.dbService.GetDB()
+// getDB returns the GORM database instance with context
+func (s *service) getDB(ctx context.Context) *gorm.DB {
+	return s.dbService.GetDB().WithContext(ctx)
 }
 
 // hashPassword hashes a plain text password using bcrypt
-func (s *Service) hashPassword(password string) (string, error) {
+func (s *service) hashPassword(password string) (string, error) {
 	// bcrypt.DefaultCost is 10, which provides a good balance between security and performance
 	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -42,18 +60,18 @@ func (s *Service) hashPassword(password string) (string, error) {
 
 // CreateAdmin creates a new admin user and returns response.
 // This function can only be called when no admin exists in the system.
-func (s *Service) CreateAdmin(req dto.InitAdminRequest) (*dto.InitAdminResponse, error) {
+func (s *service) CreateAdmin(ctx context.Context, req dto.InitAdminRequest) (*dto.InitAdminResponse, error) {
 	// Check if any admin already exists in the system
 	var adminCount int64
-	if err := s.getDB().Model(&models.User{}).Where("role = ?", models.RoleAdmin).Count(&adminCount).Error; err != nil {
+	if err := s.getDB(ctx).Model(&models.User{}).Where("role = ?", models.RoleAdmin).Count(&adminCount).Error; err != nil {
 		return nil, fmt.Errorf("failed to check existing admin: %w", err)
 	}
 	if adminCount > 0 {
-		return nil, fmt.Errorf("admin user already exists")
+		return nil, ErrAdminExists
 	}
 
 	// Reuse CreateUser to create admin user
-	user, err := s.CreateUser(req.Email, "Admin", req.Password, models.RoleAdmin)
+	user, err := s.CreateUser(ctx, req.Email, "Admin", req.Password, models.RoleAdmin)
 
 	if err != nil {
 		return nil, err
@@ -71,11 +89,14 @@ func (s *Service) CreateAdmin(req dto.InitAdminRequest) (*dto.InitAdminResponse,
 }
 
 // CreateUser creates a new user with specified role
-func (s *Service) CreateUser(email string, name string, password string, role models.UserRole) (*models.User, error) {
+func (s *service) CreateUser(ctx context.Context, email string, name string, password string, role models.UserRole) (*models.User, error) {
 	// Check if email already exists
-	var existingUser models.User
-	if err := s.getDB().Where("email = ?", email).First(&existingUser).Error; err == nil {
-		return nil, fmt.Errorf("user with email %s already exists", email)
+	var exists bool
+	if err := s.getDB(ctx).Model(&models.User{}).Select("count(*) > 0").Where("email = ?", email).Find(&exists).Error; err != nil {
+		return nil, fmt.Errorf("failed to check if user exists: %w", err)
+	}
+	if exists {
+		return nil, ErrUserAlreadyExists
 	}
 
 	// Hash the password
@@ -92,7 +113,7 @@ func (s *Service) CreateUser(email string, name string, password string, role mo
 		Role:     role,
 	}
 
-	if err := s.getDB().Create(user).Error; err != nil {
+	if err := s.getDB(ctx).Create(user).Error; err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
 
@@ -100,17 +121,17 @@ func (s *Service) CreateUser(email string, name string, password string, role mo
 }
 
 // VerifyPassword checks if the provided password matches the stored hash
-func (s *Service) VerifyPassword(hashedPassword string, plainPassword string) bool {
+func (s *service) VerifyPassword(hashedPassword string, plainPassword string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plainPassword))
 	return err == nil
 }
 
 // FindByEmail finds a user by their email address
-func (s *Service) FindByEmail(email string) (*models.User, error) {
+func (s *service) FindByEmail(ctx context.Context, email string) (*models.User, error) {
 	var user models.User
-	if err := s.getDB().Where("email = ?", email).First(&user).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("user not found")
+	if err := s.getDB(ctx).Where("email = ?", email).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrUserNotFound
 		}
 		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
@@ -118,11 +139,11 @@ func (s *Service) FindByEmail(email string) (*models.User, error) {
 }
 
 // FindByID finds a user by their ID
-func (s *Service) FindByID(id string) (*models.User, error) {
+func (s *service) FindByID(ctx context.Context, id string) (*models.User, error) {
 	var user models.User
-	if err := s.getDB().Where("id = ?", id).First(&user).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("user not found")
+	if err := s.getDB(ctx).Where("id = ?", id).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrUserNotFound
 		}
 		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
@@ -132,12 +153,12 @@ func (s *Service) FindByID(id string) (*models.User, error) {
 // GetManyUsers retrieves a paginated list of users with total count.
 // It returns a GetManyResponse containing users, pagination info and total count.
 // Supports optional filtering by role and search query (name or email).
-func (s *Service) GetManyUsers(req dto.GetManyUsersRequest) (*types.GetManyResponse[dto.UserResponse], error) {
+func (s *service) GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest) (*types.GetManyResponse[dto.UserResponse], error) {
 	// Calculate offset
 	offset := (req.Page - 1) * req.Limit
 
 	// Build base query with optional filters
-	query := s.getDB().Model(&models.User{})
+	query := s.getDB(ctx).Model(&models.User{})
 
 	// Apply role filter if provided
 	if req.Role != "" {

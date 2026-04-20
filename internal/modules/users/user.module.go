@@ -6,7 +6,7 @@ import (
 
 // Module exports the user module dependencies
 var Module = fx.Options(
-	fx.Provide(UserService),
-	fx.Provide(UserController),
+	fx.Provide(NewService),
+	fx.Provide(NewController),
 	fx.Invoke(UserRoutes),
 )

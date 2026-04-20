@@ -8,7 +8,5 @@ import (
 var Module = fx.Options(
 	fx.Provide(NewService),
 	fx.Provide(NewController),
-	fx.Invoke(func(controller *Controller) {
-		controller.RegisterRoutes()
-	}),
+	fx.Invoke(RegisterRoutes),
 )

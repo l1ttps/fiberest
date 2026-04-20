@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"time"
 
 	_ "fiberest/cmd/swag/docs" // Import swagger docs
 	"fiberest/internal/configs"
@@ -66,13 +67,25 @@ func RegisterFiberLifecycle(lc fx.Lifecycle, app *fiber.App, cfg *configs.Config
 			Register404Handler(app)
 
 			fmt.Printf("Starting server on %s...\n", address)
-			// Start server in a goroutine to not block
+
+			errCh := make(chan error, 1)
 			go func() {
 				if err := app.Listen(address); err != nil {
-					fmt.Printf("Server error: %v\n", err)
+					errCh <- err
 				}
 			}()
-			return nil
+
+			// Wait for server to start or fail, or context to timeout
+			select {
+			case err := <-errCh:
+				return fmt.Errorf("server failed to start: %w", err)
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(2 * time.Second):
+				// Assume server started successfully if no error after 2s
+				// Fiber doesn't have a "Ready" signal, so this is a heuristic
+				return nil
+			}
 		},
 		OnStop: func(ctx context.Context) error {
 			fmt.Println("Shutting down server...")

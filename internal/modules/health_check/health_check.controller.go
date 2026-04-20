@@ -4,21 +4,19 @@ import "github.com/gofiber/fiber/v3"
 
 // Controller handles health check related requests
 type Controller struct {
-	app     *fiber.App
-	service *Service
+	service Service
 }
 
 // NewController creates a new health check controller
-func NewController(app *fiber.App, service *Service) *Controller {
+func NewController(service Service) *Controller {
 	return &Controller{
-		app:     app,
 		service: service,
 	}
 }
 
 // RegisterRoutes registers all health check routes
-func (c *Controller) RegisterRoutes() {
-	c.app.Get("/health-check", c.healthCheck)
+func RegisterRoutes(app *fiber.App, controller *Controller) {
+	app.Get("/health-check", controller.healthCheck)
 }
 
 // healthCheck handles GET /health-check request
