@@ -37,13 +37,15 @@ type UserService interface {
 
 // service handles user-related business logic and responses
 type service struct {
-	dbService *database.DatabaseService
+	dbService  *database.DatabaseService
+	jwtService *auth.JWTService
 }
 
 // NewService creates a new user service instance
-func NewService(dbService *database.DatabaseService) UserService {
+func NewService(dbService *database.DatabaseService, jwtService *auth.JWTService) UserService {
 	return &service{
-		dbService: dbService,
+		dbService:  dbService,
+		jwtService: jwtService,
 	}
 }
 
@@ -220,12 +222,12 @@ func (s *service) GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest)
 
 // generateTokenPair creates a pair of access and refresh tokens for a user
 func (s *service) generateTokenPair(user *models.User) (*dto.TokenResponse, error) {
-	accessToken, err := auth.GenerateToken(user.ID.String(), string(user.Role), constants.AccessTokenDuration)
+	accessToken, err := s.jwtService.GenerateToken(user.ID.String(), string(user.Role), constants.AccessTokenDuration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
-	refreshToken, err := auth.GenerateToken(user.ID.String(), string(user.Role), constants.RefreshTokenDuration)
+	refreshToken, err := s.jwtService.GenerateToken(user.ID.String(), string(user.Role), constants.RefreshTokenDuration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
@@ -255,7 +257,7 @@ func (s *service) Login(ctx context.Context, req dto.LoginRequest) (*dto.TokenRe
 
 // RefreshToken validates a refresh token and returns a new token pair
 func (s *service) RefreshToken(ctx context.Context, req dto.RefreshTokenRequest) (*dto.TokenResponse, error) {
-	claims, err := auth.ValidateToken(req.RefreshToken)
+	claims, err := s.jwtService.ValidateToken(req.RefreshToken)
 	if err != nil {
 		return nil, fmt.Errorf("invalid refresh token: %w", err)
 	}
