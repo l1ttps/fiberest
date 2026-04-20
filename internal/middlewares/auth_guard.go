@@ -51,17 +51,22 @@ func AuthGuard(cfg *configs.Config) fiber.Handler {
 			return c.Next()
 		}
 
-		authHeader := c.Get("Authorization")
-		if authHeader == "" {
-			return http_error.Unauthorized(c, "Missing authorization header")
+		// Try to get token from cookie first
+		tokenString := c.Cookies("access_token")
+		if tokenString == "" {
+			// Fallback to Authorization header
+			authHeader := c.Get("Authorization")
+			if authHeader == "" {
+				return http_error.Unauthorized(c, "Missing authorization token")
+			}
+
+			parts := strings.Split(authHeader, " ")
+			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+				return http_error.Unauthorized(c, "Invalid authorization header format")
+			}
+			tokenString = parts[1]
 		}
 
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-			return http_error.Unauthorized(c, "Invalid authorization header format")
-		}
-
-		tokenString := parts[1]
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])

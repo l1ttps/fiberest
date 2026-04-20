@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/contrib/v3/swaggo"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"go.uber.org/fx"
 )
 
@@ -37,11 +38,27 @@ func NewFiberApp(cfg *configs.Config) *fiber.App {
 		AllowCredentials: false,
 	}))
 
-	// Global AuthGuard middleware
-	app.Use(middlewares.AuthGuard(cfg))
-
 	// Register Swagger route
 	app.Get("/swagger/*", swaggo.New())
+
+	// Rate limiting middleware
+	app.Use(limiter.New(limiter.Config{
+		Max:        20,
+		Expiration: 1 * time.Second,
+		KeyGenerator: func(c fiber.Ctx) string {
+			return c.Get("x-forwarded-for")
+		},
+		LimitReached: func(c fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"status":  fiber.StatusTooManyRequests,
+				"error":   "Too Many Requests",
+				"message": "Rate limit reached, please try again later",
+			})
+		},
+	}))
+
+	// Global AuthGuard middleware
+	app.Use(middlewares.AuthGuard(cfg))
 
 	return app
 }
