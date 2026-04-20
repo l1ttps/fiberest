@@ -1,6 +1,6 @@
-# Fiberest Boilerplate
+# Fiberest
 
-This is a boilerplate for projects using Go, Fiber, and GORM, built with a modular architecture and dependency injection.
+Production-ready Go web framework built on Fiber, designed for enterprise applications with modular architecture, dependency injection, and batteries included.
 
 ## Table of Contents
 - [Directory Structure](#directory-structure)
@@ -13,6 +13,7 @@ This is a boilerplate for projects using Go, Fiber, and GORM, built with a modul
   - [Dependency Injection](#dependency-injection)
   - [Working with Database](#working-with-database)
   - [Request Validation](#request-validation)
+  - [Middlewares](#middlewares)
   - [Generating API Documentation](#generating-api-documentation)
 - [Useful Commands](#useful-commands)
 - [API Documentation](#api-documentation)
@@ -227,6 +228,40 @@ func (c *Controller) Create(ctx fiber.Ctx) error {
     
     // Process valid request
 }
+```
+
+### Middlewares
+
+Fiberest provides pre-built middlewares for common security and rate limiting needs.
+
+#### AuthGuard Middleware
+
+JWT-based authentication middleware that protects routes. Automatically checks for tokens in cookies (`access_token`) or `Authorization: Bearer` header.
+
+```go
+import "fiberest/internal/middlewares"
+
+// Apply globally (recommended) - protects all routes except public ones
+app.Use(middlewares.AuthGuard(config))
+
+// Apply to specific route groups
+group := app.Group("/api/v1/protected", middlewares.AuthGuard(config))
+```
+
+Public routes (bypass authentication) are defined in `internal/middlewares/auth_guard.go`. Supports exact matches, prefix wildcards (`/public/*`), and suffix wildcards (`*.html`).
+
+#### Rate Limiter Middleware
+
+Rate limiting middleware to prevent abuse and protect API endpoints.
+
+```go
+import "fiberest/internal/middlewares"
+
+// Allow 100 requests per minute
+app.Use(middlewares.Limiter(100, 60))
+
+// Apply stricter limits to sensitive endpoints
+group.Post("/login", middlewares.Limiter(5, 60), controller.Login)
 ```
 
 ### Generating API Documentation
