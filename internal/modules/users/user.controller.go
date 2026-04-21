@@ -3,6 +3,8 @@ package users
 import (
 	"errors"
 	"fiberest/internal/common/validators"
+	"fiberest/internal/middlewares"
+	"fiberest/internal/models"
 	"fiberest/internal/modules/users/dto"
 	"fiberest/pkg/http_error"
 
@@ -24,7 +26,7 @@ func NewController(app *fiber.App, service UserService) *Controller {
 // UserRoutes is invoked by fx to register user routes
 func UserRoutes(app *fiber.App, controller *Controller) {
 	// Create a route group for /users
-	users := app.Group("/users")
+	users := app.Group("/users", middlewares.RoleGuard(models.RoleAdmin))
 
 	// GET /users - Get paginated list of users
 	users.Get("/", controller.getManyUsers)

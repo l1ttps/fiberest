@@ -2,6 +2,7 @@ package middlewares
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"fiberest/internal/models"
@@ -66,9 +67,27 @@ func AuthGuard(authService interface {
 		}
 
 		// Store user info in context for downstream handlers
-		c.Locals("user", session.User)
+		c.Locals("user", &session.User)
 		c.Locals("user_id", session.UserID)
 
 		return c.Next()
+	}
+}
+
+// RoleGuard ensures the authenticated user has one of the required roles
+func RoleGuard(allowedRoles ...models.UserRole) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		user, ok := c.Locals("user").(*models.User)
+		if !ok {
+			return http_error.Unauthorized(c, "User not authenticated")
+		}
+
+		for _, role := range allowedRoles {
+			if user.Role == role {
+				return c.Next()
+			}
+		}
+
+		return http_error.Forbidden(c, fmt.Sprintf("Role %s is not allowed", user.Role))
 	}
 }
