@@ -9,6 +9,9 @@ tmp_dir = "tmp"
 # Binary file name (Windows needs .exe extension)
 bin = "./tmp/main.exe"
 
+# Pre-build commands - run before each build
+pre_cmd = ["task docs"]
+
 # Build command
 cmd = "go build -o ./tmp/main.exe ./cmd/server/main.go"
 
@@ -16,7 +19,16 @@ cmd = "go build -o ./tmp/main.exe ./cmd/server/main.go"
 delay = 1000
 
 # Exclude files/directories from watching
-exclude_dir = ["assets", "tmp", "vendor", "testdata", "bin", "dist", "build"]
+exclude_dir = [
+    "assets",
+    "tmp",
+    "vendor",
+    "testdata",
+    "bin",
+    "dist",
+    "build",
+    "docs",
+]
 exclude_file = []
 exclude_regex = ["_test.go"]
 exclude_unchanged = false

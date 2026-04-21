@@ -138,7 +138,10 @@ paths:
     get:
       consumes:
       - application/json
-      description: Retrieve a paginated list of all users with pagination metadata
+      description: 'Returns a paginated list of all users in the system with support
+        for pagination, search by name/email, and filtering by user role (ADMIN or
+        USER). Response includes comprehensive pagination metadata: total users count,
+        current page number, total pages, and items per page.'
       parameters:
       - default: 10
         description: 'Number of items per page (default: 10, max: 100)'
@@ -175,14 +178,16 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
-      summary: Get paginated list of users
+      summary: Get paginated users list with filters
       tags:
       - users
   /users/{id}:
     get:
       consumes:
       - application/json
-      description: Retrieve a single user by their unique ID
+      description: Retrieves complete detailed information about a specific user using
+        their unique identifier. Returns a 404 Not Found error if no user exists with
+        the provided ID.
       parameters:
       - description: User ID
         in: path
@@ -204,14 +209,16 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
-      summary: Get user by ID
+      summary: Get user details by ID
       tags:
       - users
   /users/init:
     post:
       consumes:
       - application/json
-      description: Create the first admin account with the provided email and password
+      description: Creates the very first administrator (admin) account for the system
+        using the provided email and password. This endpoint can only be called successfully
+        once, when no admin accounts exist in the system yet.
       parameters:
       - description: Admin initialization request
         in: body
@@ -230,14 +237,16 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
-      summary: Initialize admin account
+      summary: Initialize first administrator account
       tags:
       - users
   /users/login:
     post:
       consumes:
       - application/json
-      description: Authenticate user and return access and refresh tokens
+      description: Authenticates a user using their email and password credentials.
+        On successful authentication, returns both JWT access token and refresh token,
+        and sets secure HTTP-only cookies for subsequent authenticated requests.
       parameters:
       - description: Login request
         in: body
@@ -260,14 +269,17 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
-      summary: User login
+      summary: User authentication login
       tags:
       - users
   /users/refresh-token:
     post:
       consumes:
       - application/json
-      description: Issue a new pair of tokens using a valid refresh token
+      description: Issues a new pair of JWT tokens (access token and refresh token)
+        using a valid existing refresh token. This endpoint allows users to maintain
+        their authenticated session without re-entering login credentials when their
+        access token expires.
       parameters:
       - description: Refresh token request
         in: body
@@ -286,7 +298,7 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
-      summary: Refresh JWT tokens
+      summary: Refresh JWT authentication tokens
       tags:
       - users
 swagger: "2.0"

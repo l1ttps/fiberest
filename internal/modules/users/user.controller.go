@@ -46,8 +46,8 @@ func UserRoutes(app *fiber.App, controller *Controller) {
 }
 
 // initAdmin handles POST /users/init request
-// @Summary Initialize admin account
-// @Description Create the first admin account with the provided email and password
+// @Summary Initialize first administrator account
+// @Description Creates the very first administrator (admin) account for the system using the provided email and password. This endpoint can only be called successfully once, when no admin accounts exist in the system yet.
 // @Tags users
 // @Accept json
 // @Produce json
@@ -78,8 +78,8 @@ func (c *Controller) initAdmin(ctx fiber.Ctx) error {
 }
 
 // getManyUsers handles GET /users request
-// @Summary Get paginated list of users
-// @Description Retrieve a paginated list of all users with pagination metadata
+// @Summary Get paginated users list with filters
+// @Description Returns a paginated list of all users in the system with support for pagination, search by name/email, and filtering by user role (ADMIN or USER). Response includes comprehensive pagination metadata: total users count, current page number, total pages, and items per page.
 // @Tags users
 // @Accept json
 // @Produce json
@@ -122,8 +122,8 @@ func (c *Controller) getManyUsers(ctx fiber.Ctx) error {
 }
 
 // getUserByID handles GET /users/:id request
-// @Summary Get user by ID
-// @Description Retrieve a single user by their unique ID
+// @Summary Get user details by ID
+// @Description Retrieves complete detailed information about a specific user using their unique identifier. Returns a 404 Not Found error if no user exists with the provided ID.
 // @Tags users
 // @Accept json
 // @Produce json
@@ -153,8 +153,8 @@ func (c *Controller) getUserByID(ctx fiber.Ctx) error {
 }
 
 // login handles POST /users/login request
-// @Summary User login
-// @Description Authenticate user and return access and refresh tokens
+// @Summary User authentication login
+// @Description Authenticates a user using their email and password credentials. On successful authentication, returns both JWT access token and refresh token, and sets secure HTTP-only cookies for subsequent authenticated requests.
 // @Tags users
 // @Accept json
 // @Produce json
@@ -196,8 +196,8 @@ func (c *Controller) login(ctx fiber.Ctx) error {
 }
 
 // refreshToken handles POST /users/refresh-token request
-// @Summary Refresh JWT tokens
-// @Description Issue a new pair of tokens using a valid refresh token
+// @Summary Refresh JWT authentication tokens
+// @Description Issues a new pair of JWT tokens (access token and refresh token) using a valid existing refresh token. This endpoint allows users to maintain their authenticated session without re-entering login credentials when their access token expires.
 // @Tags users
 // @Accept json
 // @Produce json

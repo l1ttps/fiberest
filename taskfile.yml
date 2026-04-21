@@ -2,20 +2,23 @@ version: '3'
 
 tasks:
   docs:
+    desc: Generate API documentation
     cmds:
       - swag init -g cmd/server/main.go -o docs
 
   run:
+    desc: Build docs and run server in normal mode
     deps: [docs]
     cmds:
       - go run cmd/server/main.go
 
   dev:
-    deps: [docs]
+    desc: Run server in development mode with hot reload
     cmds:
       - air
 
   build:
+    desc: Build production server binary with documentation
     deps: [docs]
     cmds:
       - go build -o bin/server cmd/server/main.go

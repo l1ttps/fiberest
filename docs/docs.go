@@ -40,7 +40,7 @@ const docTemplate = `{
         },
         "/users": {
             "get": {
-                "description": "Retrieve a paginated list of all users with pagination metadata",
+                "description": "Returns a paginated list of all users in the system with support for pagination, search by name/email, and filtering by user role (ADMIN or USER). Response includes comprehensive pagination metadata: total users count, current page number, total pages, and items per page.",
                 "consumes": [
                     "application/json"
                 ],
@@ -50,7 +50,7 @@ const docTemplate = `{
                 "tags": [
                     "users"
                 ],
-                "summary": "Get paginated list of users",
+                "summary": "Get paginated users list with filters",
                 "parameters": [
                     {
                         "maximum": 100,
@@ -104,7 +104,7 @@ const docTemplate = `{
         },
         "/users/init": {
             "post": {
-                "description": "Create the first admin account with the provided email and password",
+                "description": "Creates the very first administrator (admin) account for the system using the provided email and password. This endpoint can only be called successfully once, when no admin accounts exist in the system yet.",
                 "consumes": [
                     "application/json"
                 ],
@@ -114,7 +114,7 @@ const docTemplate = `{
                 "tags": [
                     "users"
                 ],
-                "summary": "Initialize admin account",
+                "summary": "Initialize first administrator account",
                 "parameters": [
                     {
                         "description": "Admin initialization request",
@@ -144,7 +144,7 @@ const docTemplate = `{
         },
         "/users/login": {
             "post": {
-                "description": "Authenticate user and return access and refresh tokens",
+                "description": "Authenticates a user using their email and password credentials. On successful authentication, returns both JWT access token and refresh token, and sets secure HTTP-only cookies for subsequent authenticated requests.",
                 "consumes": [
                     "application/json"
                 ],
@@ -154,7 +154,7 @@ const docTemplate = `{
                 "tags": [
                     "users"
                 ],
-                "summary": "User login",
+                "summary": "User authentication login",
                 "parameters": [
                     {
                         "description": "Login request",
@@ -190,7 +190,7 @@ const docTemplate = `{
         },
         "/users/refresh-token": {
             "post": {
-                "description": "Issue a new pair of tokens using a valid refresh token",
+                "description": "Issues a new pair of JWT tokens (access token and refresh token) using a valid existing refresh token. This endpoint allows users to maintain their authenticated session without re-entering login credentials when their access token expires.",
                 "consumes": [
                     "application/json"
                 ],
@@ -200,7 +200,7 @@ const docTemplate = `{
                 "tags": [
                     "users"
                 ],
-                "summary": "Refresh JWT tokens",
+                "summary": "Refresh JWT authentication tokens",
                 "parameters": [
                     {
                         "description": "Refresh token request",
@@ -230,7 +230,7 @@ const docTemplate = `{
         },
         "/users/{id}": {
             "get": {
-                "description": "Retrieve a single user by their unique ID",
+                "description": "Retrieves complete detailed information about a specific user using their unique identifier. Returns a 404 Not Found error if no user exists with the provided ID.",
                 "consumes": [
                     "application/json"
                 ],
@@ -240,7 +240,7 @@ const docTemplate = `{
                 "tags": [
                     "users"
                 ],
-                "summary": "Get user by ID",
+                "summary": "Get user details by ID",
                 "parameters": [
                     {
                         "type": "string",
