@@ -8,6 +8,7 @@ import (
 	"fiberest/docs" // Import swagger docs
 	"fiberest/internal/configs"
 	"fiberest/internal/middlewares"
+	"fiberest/internal/modules/auth"
 	"fiberest/pkg/http_error"
 
 	"github.com/gofiber/fiber/v3"
@@ -28,7 +29,7 @@ import (
 // @host localhost:8080
 // @BasePath /
 // NewFiberApp creates a new Fiber app instance without starting it
-func NewFiberApp(cfg *configs.Config) *fiber.App {
+func NewFiberApp(cfg *configs.Config, authService auth.AuthService) *fiber.App {
 	app := fiber.New()
 
 	// Configure CORS middleware
@@ -59,8 +60,8 @@ func NewFiberApp(cfg *configs.Config) *fiber.App {
 		},
 	}))
 
-	// Global AuthGuard middleware
-	app.Use(middlewares.AuthGuard(cfg))
+	// Global AuthGuard middleware (session-based)
+	app.Use(middlewares.AuthGuard(authService))
 
 	return app
 }

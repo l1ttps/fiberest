@@ -57,7 +57,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
-                "description": "Authenticates a user using their email and password credentials. On successful authentication, returns both JWT access token and refresh token, and sets secure HTTP-only cookies for subsequent authenticated requests.",
+                "description": "Authenticates a user using their email and password credentials. On successful authentication, creates a session and sets an HTTP-only cookie for subsequent authenticated requests.",
                 "consumes": [
                     "application/json"
                 ],
@@ -83,7 +83,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dto.TokenResponse"
+                            "$ref": "#/definitions/dto.LoginResponse"
                         }
                     },
                     "400": {
@@ -101,39 +101,25 @@ const docTemplate = `{
                 }
             }
         },
-        "/auth/refresh-token": {
+        "/auth/logout": {
             "post": {
-                "description": "Issues a new pair of JWT tokens (access token and refresh token) using a valid existing refresh token. This endpoint allows users to maintain their authenticated session without re-entering login credentials when their access token expires.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
+                "description": "Invalidates the current session by deleting it from the database and clearing the session cookie.",
                 "tags": [
                     "auth"
                 ],
-                "summary": "Refresh JWT authentication tokens",
-                "parameters": [
-                    {
-                        "description": "Refresh token request",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.RefreshTokenRequest"
-                        }
-                    }
-                ],
+                "summary": "User logout",
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/dto.TokenResponse"
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    "401": {
+                        "description": "Unauthorized",
                         "schema": {
                             "$ref": "#/definitions/http_error.ErrorResponse"
                         }
@@ -345,25 +331,12 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.RefreshTokenRequest": {
-            "type": "object",
-            "required": [
-                "refreshToken"
-            ],
-            "properties": {
-                "refreshToken": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.TokenResponse": {
+        "dto.LoginResponse": {
             "type": "object",
             "properties": {
-                "accessToken": {
-                    "type": "string"
-                },
-                "refreshToken": {
-                    "type": "string"
+                "message": {
+                    "type": "string",
+                    "example": "Login successful"
                 }
             }
         },

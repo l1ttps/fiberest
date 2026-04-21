@@ -35,8 +35,8 @@ func RegisterRoutes(app *fiber.App, controller *Controller) {
 	// POST /auth/login - User login
 	auth.Post("/login", middlewares.Limiter(5, 60), controller.login)
 
-	// POST /auth/refresh-token - Refresh JWT tokens
-	auth.Post("/refresh-token", middlewares.Limiter(3, 60), controller.refreshToken)
+	// POST /auth/logout - User logout
+	auth.Post("/logout", middlewares.Limiter(5, 60), controller.logout)
 }
 
 // initAdmin handles POST /auth/init request
@@ -73,12 +73,12 @@ func (c *Controller) initAdmin(ctx fiber.Ctx) error {
 
 // login handles POST /auth/login request
 // @Summary User authentication login
-// @Description Authenticates a user using their email and password credentials. On successful authentication, returns both JWT access token and refresh token, and sets secure HTTP-only cookies for subsequent authenticated requests.
+// @Description Authenticates a user using their email and password credentials. On successful authentication, creates a session and sets an HTTP-only cookie for subsequent authenticated requests.
 // @Tags auth
 // @Accept json
 // @Produce json
 // @Param request body dto.LoginRequest true "Login request"
-// @Success 200 {object} dto.TokenResponse
+// @Success 200 {object} dto.LoginResponse
 // @Failure 400 {object} http_error.ErrorResponse
 // @Failure 401 {object} http_error.ErrorResponse
 // @Router /auth/login [post]
@@ -89,69 +89,60 @@ func (c *Controller) login(ctx fiber.Ctx) error {
 		return validators.ResponseError(ctx, err)
 	}
 
-	response, err := c.service.Login(ctx.Context(), req)
+	// Get client IP and User-Agent for session tracking
+	ipAddress := ctx.IP()
+	userAgent := ctx.Get("User-Agent")
+
+	response, err := c.service.Login(ctx.Context(), req, ipAddress, userAgent)
 	if err != nil {
 		return http_error.BadRequest(ctx, err.Error())
 	}
 
+	// Set session cookie with the token from service
 	ctx.Cookie(&fiber.Cookie{
-		Name:     "access_token",
-		Value:    response.AccessToken,
-		Expires:  time.Now().Add(constants.AccessTokenDuration),
+		Name:     "session_id",
+		Value:    response.SessionToken,
+		Expires:  time.Now().Add(constants.SessionDuration),
 		HTTPOnly: true,
 		Secure:   true,
 		SameSite: "Lax",
-	})
-	ctx.Cookie(&fiber.Cookie{
-		Name:     "refresh_token",
-		Value:    response.RefreshToken,
-		Expires:  time.Now().Add(constants.RefreshTokenDuration),
-		HTTPOnly: true,
-		Secure:   true,
-		SameSite: "Lax",
+		Path:     "/",
 	})
 
 	return ctx.Status(fiber.StatusOK).JSON(response)
 }
 
-// refreshToken handles POST /auth/refresh-token request
-// @Summary Refresh JWT authentication tokens
-// @Description Issues a new pair of JWT tokens (access token and refresh token) using a valid existing refresh token. This endpoint allows users to maintain their authenticated session without re-entering login credentials when their access token expires.
+// logout handles POST /auth/logout request
+// @Summary User logout
+// @Description Invalidates the current session by deleting it from the database and clearing the session cookie.
 // @Tags auth
-// @Accept json
-// @Produce json
-// @Param request body dto.RefreshTokenRequest true "Refresh token request"
-// @Success 200 {object} dto.TokenResponse
-// @Failure 400 {object} http_error.ErrorResponse
-// @Router /auth/refresh-token [post]
-func (c *Controller) refreshToken(ctx fiber.Ctx) error {
-	var req dto.RefreshTokenRequest
-
-	if err := validators.ParseAndValidate(ctx, &req); err != nil {
-		return validators.ResponseError(ctx, err)
+// @Success 200 {object} map[string]string
+// @Failure 401 {object} http_error.ErrorResponse
+// @Router /auth/logout [post]
+func (c *Controller) logout(ctx fiber.Ctx) error {
+	// Get session token from cookie
+	sessionToken := ctx.Cookies("session_id")
+	if sessionToken == "" {
+		return http_error.Unauthorized(ctx, "No active session")
 	}
 
-	response, err := c.service.RefreshToken(ctx.Context(), req)
-	if err != nil {
-		return http_error.BadRequest(ctx, err.Error())
+	// Delete session from database
+	if err := c.service.Logout(ctx.Context(), sessionToken); err != nil {
+		return http_error.InternalServerError(ctx, err.Error())
 	}
 
+	// Clear session cookie by setting expired
 	ctx.Cookie(&fiber.Cookie{
-		Name:     "access_token",
-		Value:    response.AccessToken,
-		Expires:  time.Now().Add(constants.AccessTokenDuration),
+		Name:     "session_id",
+		Value:    "",
+		Expires:  time.Now().Add(-1 * time.Hour), // Past expiration
 		HTTPOnly: true,
 		Secure:   true,
 		SameSite: "Lax",
-	})
-	ctx.Cookie(&fiber.Cookie{
-		Name:     "refresh_token",
-		Value:    response.RefreshToken,
-		Expires:  time.Now().Add(constants.RefreshTokenDuration),
-		HTTPOnly: true,
-		Secure:   true,
-		SameSite: "Lax",
+		Path:     "/",
 	})
 
-	return ctx.Status(fiber.StatusOK).JSON(response)
+	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Logout successful",
+	})
 }

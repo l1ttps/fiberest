@@ -20,13 +20,14 @@ type LoginRequest struct {
 	Password string `json:"password" validate:"required"`
 }
 
-// TokenResponse represents the response containing JWT tokens
-type TokenResponse struct {
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
+// LoginResponse represents the response after successful login
+type LoginResponse struct {
+	Message      string `json:"message" example:"Login successful"`
+	SessionToken string `json:"-"` // Not exposed in JSON, used for setting cookie
 }
 
 // RefreshTokenRequest represents the request body for token refresh
+// DEPRECATED: No longer used in session-based auth
 type RefreshTokenRequest struct {
 	RefreshToken string `json:"refreshToken" validate:"required"`
 }

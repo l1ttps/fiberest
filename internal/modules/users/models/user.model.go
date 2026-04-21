@@ -26,10 +26,6 @@ type User struct {
 	// Name is the display name of the user
 	Name string `gorm:"not null;size:255" json:"name"`
 
-	// Password is the hashed password (bcrypt)
-	// Not exposed in JSON responses for security
-	Password string `gorm:"not null" json:"-"`
-
 	// Role determines user permissions (ADMIN or USER)
 	Role UserRole `gorm:"not null;default:'USER'" json:"role"`
 }

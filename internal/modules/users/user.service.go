@@ -11,7 +11,6 @@ import (
 	"fiberest/internal/modules/users/dto"
 	"fiberest/internal/modules/users/models"
 
-	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -23,7 +22,7 @@ var (
 
 // UserService defines the business logic for user management
 type UserService interface {
-	CreateUser(ctx context.Context, email string, name string, password string, role models.UserRole) (*models.User, error)
+	CreateUser(ctx context.Context, email string, name string, role models.UserRole) (*models.User, error)
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
 	FindByID(ctx context.Context, id string) (*models.User, error)
 	GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest) (*types.GetManyResponse[dto.UserResponse], error)
@@ -46,18 +45,8 @@ func (s *service) getDB(ctx context.Context) *gorm.DB {
 	return s.dbService.GetDB().WithContext(ctx)
 }
 
-// hashPassword hashes a plain text password using bcrypt
-func (s *service) hashPassword(password string) (string, error) {
-	// bcrypt.DefaultCost is 10, which provides a good balance between security and performance
-	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", fmt.Errorf("failed to hash password: %w", err)
-	}
-	return string(hashedBytes), nil
-}
-
 // CreateUser creates a new user with specified role
-func (s *service) CreateUser(ctx context.Context, email string, name string, password string, role models.UserRole) (*models.User, error) {
+func (s *service) CreateUser(ctx context.Context, email string, name string, role models.UserRole) (*models.User, error) {
 	// Check if email already exists
 	var exists bool
 	if err := s.getDB(ctx).Model(&models.User{}).Select("count(*) > 0").Where("email = ?", email).Find(&exists).Error; err != nil {
@@ -67,18 +56,11 @@ func (s *service) CreateUser(ctx context.Context, email string, name string, pas
 		return nil, ErrUserAlreadyExists
 	}
 
-	// Hash the password
-	hashedPassword, err := s.hashPassword(password)
-	if err != nil {
-		return nil, err
-	}
-
 	// Create the user
 	user := &models.User{
-		Email:    email,
-		Name:     name,
-		Password: hashedPassword,
-		Role:     role,
+		Email: email,
+		Name:  name,
+		Role:  role,
 	}
 
 	if err := s.getDB(ctx).Create(user).Error; err != nil {

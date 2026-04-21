@@ -1,24 +1,24 @@
 package middlewares
 
 import (
-	"fmt"
+	"context"
 	"strings"
 
-	"fiberest/internal/configs"
+	"fiberest/internal/modules/auth/models"
 	"fiberest/pkg/http_error"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 // publicRoutes defines the list of paths that do not require authentication
 var publicRoutes = []string{
 	"health-check",
-	"/users/login",
-	"/admin/init",
+	"/auth/login",
+	"/auth/init",
+	"/docs/*",
 }
 
-// isPublicRoute checks if the current path is listed in publicRoutes, supporting trailing or leading wildcards
+// isPublicRoute checks if the current path is listed in publicRoutes
 func isPublicRoute(path string) bool {
 	path = strings.TrimSuffix(path, "/")
 	if path == "" {
@@ -44,39 +44,30 @@ func isPublicRoute(path string) bool {
 	return false
 }
 
-// AuthGuard validates the JWT token from the Authorization header
-func AuthGuard(cfg *configs.Config) fiber.Handler {
+// AuthGuard validates the session token from the session_id cookie
+func AuthGuard(authService interface {
+	FindValidSession(ctx context.Context, sessionToken string) (*models.Session, error)
+}) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		if isPublicRoute(c.Path()) {
 			return c.Next()
 		}
 
-		// Try to get token from cookie first
-		tokenString := c.Cookies("access_token")
-		if tokenString == "" {
-			// Fallback to Authorization header
-			authHeader := c.Get("Authorization")
-			if authHeader == "" {
-				return http_error.Unauthorized(c, "Missing authorization token")
-			}
-
-			parts := strings.Split(authHeader, " ")
-			if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
-				return http_error.Unauthorized(c, "Invalid authorization header format")
-			}
-			tokenString = parts[1]
+		// Extract session token from cookie
+		sessionToken := c.Cookies("session_id")
+		if sessionToken == "" {
+			return http_error.Unauthorized(c, "Missing session token")
 		}
 
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-			}
-			return []byte(cfg.GetString("TOKEN_SECRET")), nil
-		})
-
-		if err != nil || !token.Valid {
-			return http_error.Unauthorized(c, "Invalid or expired token")
+		// Validate session
+		session, err := authService.FindValidSession(c.Context(), sessionToken)
+		if err != nil {
+			return http_error.Unauthorized(c, "Invalid or expired session")
 		}
+
+		// Store user info in context for downstream handlers
+		c.Locals("user", session.User)
+		c.Locals("user_id", session.UserID)
 
 		return c.Next()
 	}

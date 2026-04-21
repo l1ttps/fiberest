@@ -2,44 +2,53 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
 
-	"fiberest/internal/common/auth"
 	"fiberest/internal/common/constants"
 	"fiberest/internal/database"
 	"fiberest/internal/modules/auth/dto"
+	"fiberest/internal/modules/auth/models"
 	usermodels "fiberest/internal/modules/users/models"
 
+	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
 var (
-	ErrUserNotFound = errors.New("user not found")
-	ErrAdminExists  = errors.New("admin user already exists")
+	ErrUserNotFound      = errors.New("user not found")
+	ErrAdminExists       = errors.New("admin user already exists")
+	ErrInvalidCredential = errors.New("invalid email or password")
+	ErrSessionNotFound   = errors.New("session not found")
 )
 
 // AuthService defines the business logic for authentication
 type AuthService interface {
 	CreateAdmin(ctx context.Context, req dto.InitAdminRequest) (*dto.InitAdminResponse, error)
-	Login(ctx context.Context, req dto.LoginRequest) (*dto.TokenResponse, error)
-	RefreshToken(ctx context.Context, req dto.RefreshTokenRequest) (*dto.TokenResponse, error)
-	VerifyPassword(hashedPassword string, plainPassword string) bool
+	Login(ctx context.Context, req dto.LoginRequest, ipAddress, userAgent string) (*dto.LoginResponse, error)
+	Logout(ctx context.Context, sessionToken string) error
 	FindByEmail(ctx context.Context, email string) (*usermodels.User, error)
 	FindByID(ctx context.Context, id string) (*usermodels.User, error)
+	VerifyPassword(hashedPassword string, plainPassword string) bool
+
+	// Session management
+	CreateSession(ctx context.Context, userID uuid.UUID, ipAddress, userAgent string) (*models.Session, error)
+	FindValidSession(ctx context.Context, sessionToken string) (*models.Session, error)
+	DeleteSession(ctx context.Context, sessionToken string) error
 }
 
 type service struct {
-	dbService  *database.DatabaseService
-	jwtService *auth.JWTService
+	dbService *database.DatabaseService
 }
 
 // NewService creates a new auth service instance
-func NewService(dbService *database.DatabaseService, jwtService *auth.JWTService) AuthService {
+func NewService(dbService *database.DatabaseService) AuthService {
 	return &service{
-		dbService:  dbService,
-		jwtService: jwtService,
+		dbService: dbService,
 	}
 }
 
@@ -83,14 +92,25 @@ func (s *service) CreateAdmin(ctx context.Context, req dto.InitAdminRequest) (*d
 
 	// Create the user
 	user := &usermodels.User{
-		Email:    req.Email,
-		Name:     "Admin",
-		Password: hashedPassword,
-		Role:     usermodels.RoleAdmin,
+		Email: req.Email,
+		Name:  "Admin",
+		Role:  usermodels.RoleAdmin,
 	}
 
 	if err := s.getDB(ctx).Create(user).Error; err != nil {
 		return nil, fmt.Errorf("failed to create admin user: %w", err)
+	}
+
+	// Create the account for authentication
+	account := &models.Account{
+		UserID:    user.ID,
+		Type:      models.AccountTypeEmail,
+		Password:  hashedPassword,
+		IsPrimary: true,
+	}
+
+	if err := s.getDB(ctx).Create(account).Error; err != nil {
+		return nil, fmt.Errorf("failed to create admin account: %w", err)
 	}
 
 	// Build response
@@ -128,55 +148,102 @@ func (s *service) FindByID(ctx context.Context, id string) (*usermodels.User, er
 	return &user, nil
 }
 
-// generateTokenPair creates a pair of access and refresh tokens for a user
-func (s *service) generateTokenPair(user *usermodels.User) (*dto.TokenResponse, error) {
-	accessToken, err := s.jwtService.GenerateToken(user.ID.String(), string(user.Role), constants.AccessTokenDuration)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate access token: %w", err)
+// generateSessionToken creates a cryptographically secure random token
+func (s *service) generateSessionToken() (string, error) {
+	bytes := make([]byte, 32) // 256-bit token
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("failed to generate session token: %w", err)
 	}
-
-	refreshToken, err := s.jwtService.GenerateToken(user.ID.String(), string(user.Role), constants.RefreshTokenDuration)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
-	}
-
-	return &dto.TokenResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-	}, nil
+	return hex.EncodeToString(bytes), nil
 }
 
-// Login authenticates user and returns a token pair
-func (s *service) Login(ctx context.Context, req dto.LoginRequest) (*dto.TokenResponse, error) {
+// CreateSession creates a new session for a user
+func (s *service) CreateSession(ctx context.Context, userID uuid.UUID, ipAddress, userAgent string) (*models.Session, error) {
+	sessionToken, err := s.generateSessionToken()
+	if err != nil {
+		return nil, err
+	}
+
+	session := &models.Session{
+		SessionToken: sessionToken,
+		UserID:       userID,
+		ExpiresAt:    time.Now().Add(constants.SessionDuration),
+		IPAddress:    ipAddress,
+		UserAgent:    userAgent,
+	}
+
+	if err := s.getDB(ctx).Create(session).Error; err != nil {
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	return session, nil
+}
+
+// FindValidSession finds a session by token and checks if it's still valid
+func (s *service) FindValidSession(ctx context.Context, sessionToken string) (*models.Session, error) {
+	var session models.Session
+	if err := s.getDB(ctx).Where("session_token = ?", sessionToken).First(&session).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrSessionNotFound
+		}
+		return nil, fmt.Errorf("failed to find session: %w", err)
+	}
+
+	if !session.IsValid() {
+		// Session expired, delete it
+		s.DeleteSession(ctx, sessionToken)
+		return nil, errors.New("session expired")
+	}
+
+	return &session, nil
+}
+
+// DeleteSession removes a session by its token
+func (s *service) DeleteSession(ctx context.Context, sessionToken string) error {
+	if err := s.getDB(ctx).Where("session_token = ?", sessionToken).Delete(&models.Session{}).Error; err != nil {
+		return fmt.Errorf("failed to delete session: %w", err)
+	}
+	return nil
+}
+
+// Login authenticates user and sets session cookie
+func (s *service) Login(ctx context.Context, req dto.LoginRequest, ipAddress, userAgent string) (*dto.LoginResponse, error) {
+	// Find user by email
 	user, err := s.FindByEmail(ctx, req.Email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
-			return nil, fmt.Errorf("invalid email or password")
+			return nil, ErrInvalidCredential
 		}
 		return nil, err
 	}
 
-	if !s.VerifyPassword(user.Password, req.Password) {
-		return nil, fmt.Errorf("invalid email or password")
+	// Find the user's EMAIL account
+	var account models.Account
+	if err := s.getDB(ctx).Where("user_id = ? AND type = ?", user.ID, models.AccountTypeEmail).First(&account).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("account not found for user")
+		}
+		return nil, fmt.Errorf("failed to find account: %w", err)
 	}
 
-	return s.generateTokenPair(user)
+	// Verify password against account's hash
+	if !s.VerifyPassword(account.Password, req.Password) {
+		return nil, ErrInvalidCredential
+	}
+
+	// Create new session
+	session, err := s.CreateSession(ctx, user.ID, ipAddress, userAgent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	return &dto.LoginResponse{
+		Message:      "Login successful",
+		SessionToken: session.SessionToken,
+	}, nil
 }
 
-// RefreshToken validates a refresh token and returns a new token pair
-func (s *service) RefreshToken(ctx context.Context, req dto.RefreshTokenRequest) (*dto.TokenResponse, error) {
-	claims, err := s.jwtService.ValidateToken(req.RefreshToken)
-	if err != nil {
-		return nil, fmt.Errorf("invalid refresh token: %w", err)
-	}
-
-	user, err := s.FindByID(ctx, claims.UserID)
-	if err != nil {
-		if errors.Is(err, ErrUserNotFound) {
-			return nil, fmt.Errorf("user not found")
-		}
-		return nil, err
-	}
-
-	return s.generateTokenPair(user)
+// Logout removes the current session
+func (s *service) Logout(ctx context.Context, sessionToken string) error {
+	return s.DeleteSession(ctx, sessionToken)
 }
