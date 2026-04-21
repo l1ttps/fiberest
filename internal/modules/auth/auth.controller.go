@@ -45,7 +45,7 @@ func RegisterRoutes(app *fiber.App, controller *Controller) {
 // initAdmin handles POST /auth/init request
 // @Summary Initialize first administrator account
 // @Description Creates the very first administrator (admin) account for the system using the provided email and password. This endpoint can only be called successfully once, when no admin accounts exist in the system yet.
-// @Tags auth
+// @Tags Auth
 // @Accept json
 // @Produce json
 // @Param request body dto.InitAdminRequest true "Admin initialization request"
@@ -77,7 +77,7 @@ func (c *Controller) initAdmin(ctx fiber.Ctx) error {
 // login handles POST /auth/login request
 // @Summary User authentication login
 // @Description Authenticates a user using their email and password credentials. On successful authentication, creates a session and sets an HTTP-only cookie for subsequent authenticated requests.
-// @Tags auth
+// @Tags Auth
 // @Accept json
 // @Produce json
 // @Param request body dto.LoginRequest true "Login request"
@@ -118,7 +118,7 @@ func (c *Controller) login(ctx fiber.Ctx) error {
 // logout handles POST /auth/logout request
 // @Summary User logout
 // @Description Invalidates the current session by deleting it from the database and clearing the session cookie.
-// @Tags auth
+// @Tags Auth
 // @Success 200 {object} map[string]string
 // @Failure 401 {object} http_error.ErrorResponse
 // @Router /auth/logout [post]
@@ -153,7 +153,7 @@ func (c *Controller) logout(ctx fiber.Ctx) error {
 // session handles GET /auth/session request
 // @Summary Get current session
 // @Description Returns the current active session details.
-// @Tags auth
+// @Tags Auth
 // @Produce json
 // @Success 200 {object} models.Session
 // @Failure 401 {object} http_error.ErrorResponse

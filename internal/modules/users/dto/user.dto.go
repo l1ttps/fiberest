@@ -26,3 +26,15 @@ type GetManyUsersExample struct {
 	HasNextPage bool           `json:"hasNextPage"`
 	Total       int64          `json:"total"`
 }
+
+// UpdateUserRequest defines the payload for updating a user
+type UpdateUserRequest struct {
+	Email string `json:"email" validate:"omitempty,email"`
+	Name  string `json:"name" validate:"omitempty,min=1,max=255"`
+	Role  string `json:"role" validate:"omitempty,oneof=ADMIN USER"`
+}
+
+// SetPasswordRequest defines the payload for setting a user's password
+type SetPasswordRequest struct {
+	Password string `json:"password" validate:"required,min=8,max=72"`
+}

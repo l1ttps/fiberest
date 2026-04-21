@@ -22,7 +22,7 @@ func RegisterRoutes(app *fiber.App, controller *Controller) {
 // healthCheck handles GET /health-check request
 // @Summary Check health
 // @Description Check if the server is running and return "OK"
-// @Tags health-check
+// @Tags Health Check
 // @Accept plain
 // @Produce plain
 // @Success 200 {string} string "OK"

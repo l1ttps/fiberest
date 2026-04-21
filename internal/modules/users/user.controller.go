@@ -33,12 +33,21 @@ func UserRoutes(app *fiber.App, controller *Controller) {
 
 	// GET /users/:id - Get user by ID
 	users.Get("/:id", controller.getUserByID)
+
+	// PUT /users/:id - Update user by ID
+	users.Put("/:id", controller.updateUserByID)
+
+	// DELETE /users/:id - Delete user by ID
+	users.Delete("/:id", controller.deleteUserByID)
+
+	// POST /users/set-password/:id - Set password for user
+	users.Post("/set-password/:id", controller.setPassword)
 }
 
 // getManyUsers handles GET /users request
 // @Summary Get paginated users list with filters
 // @Description Returns a paginated list of all users in the system with support for pagination, search by name/email, and filtering by user role (ADMIN or USER). Response includes comprehensive pagination metadata: total users count, current page number, total pages, and items per page.
-// @Tags users
+// @Tags Users
 // @Accept json
 // @Produce json
 // @Param limit query int false "Number of items per page (default: 10, max: 100)" minimum(1) maximum(100) default(10)
@@ -82,7 +91,7 @@ func (c *Controller) getManyUsers(ctx fiber.Ctx) error {
 // getUserByID handles GET /users/:id request
 // @Summary Get user details by ID
 // @Description Retrieves complete detailed information about a specific user using their unique identifier. Returns a 404 Not Found error if no user exists with the provided ID.
-// @Tags users
+// @Tags Users
 // @Accept json
 // @Produce json
 // @Param id path string true "User ID"
@@ -108,4 +117,117 @@ func (c *Controller) getUserByID(ctx fiber.Ctx) error {
 
 	// Return success response
 	return ctx.Status(fiber.StatusOK).JSON(user)
+}
+
+// updateUserByID handles PUT /users/:id request
+// @Summary Update user by ID
+// @Description Updates user information (email, name, role) by user ID. Only provided fields will be updated. Returns updated user data.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID"
+// @Param request body dto.UpdateUserRequest true "User update data"
+// @Success 200 {object} models.User
+// @Failure 400 {object} http_error.ErrorResponse
+// @Failure 404 {object} http_error.ErrorResponse
+// @Failure 409 {object} http_error.ErrorResponse
+// @Router /users/{id} [put]
+func (c *Controller) updateUserByID(ctx fiber.Ctx) error {
+	// Get user ID from path parameter
+	userID := ctx.Params("id")
+	if userID == "" {
+		return http_error.BadRequest(ctx, "user ID is required")
+	}
+
+	// Parse request body
+	var req dto.UpdateUserRequest
+	if err := validators.ParseAndValidate(ctx, &req); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
+
+	// Call service to update user
+	user, err := c.service.UpdateUser(ctx.Context(), userID, req)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return http_error.NotFound(ctx, err.Error())
+		}
+		if errors.Is(err, ErrUserAlreadyExists) {
+			return http_error.Conflict(ctx, err.Error())
+		}
+		return http_error.InternalServerError(ctx, err.Error())
+	}
+
+	// Return success response
+	return ctx.Status(fiber.StatusOK).JSON(user)
+}
+
+// deleteUserByID handles DELETE /users/:id request
+// @Summary Delete user by ID
+// @Description Permanently removes a user from the system by their unique identifier. Returns 204 No Content on success.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID"
+// @Success 204 "User deleted successfully"
+// @Failure 400 {object} http_error.ErrorResponse
+// @Failure 404 {object} http_error.ErrorResponse
+// @Router /users/{id} [delete]
+func (c *Controller) deleteUserByID(ctx fiber.Ctx) error {
+	// Get user ID from path parameter
+	userID := ctx.Params("id")
+	if userID == "" {
+		return http_error.BadRequest(ctx, "user ID is required")
+	}
+
+	// Call service to delete user
+	err := c.service.DeleteUser(ctx.Context(), userID)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return http_error.NotFound(ctx, err.Error())
+		}
+		return http_error.InternalServerError(ctx, err.Error())
+	}
+
+	// Return success response (204 No Content)
+	return ctx.Status(fiber.StatusNoContent).SendString("")
+}
+
+// setPassword handles POST /users/set-password/:id request
+// @Summary Set password for a user
+// @Description Sets or updates the password for a user's EMAIL authentication account. Only admins can set passwords for any user.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID"
+// @Param request body dto.SetPasswordRequest true "New password (min 8 characters)"
+// @Success 200 {object} map[string]string "Password set successfully"
+// @Failure 400 {object} http_error.ErrorResponse
+// @Failure 404 {object} http_error.ErrorResponse
+// @Router /users/set-password/{id} [post]
+func (c *Controller) setPassword(ctx fiber.Ctx) error {
+	// Get user ID from path parameter
+	userID := ctx.Params("id")
+	if userID == "" {
+		return http_error.BadRequest(ctx, "user ID is required")
+	}
+
+	// Parse request body
+	var req dto.SetPasswordRequest
+	if err := validators.ParseAndValidate(ctx, &req); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
+
+	// Call service to set password
+	err := c.service.SetPassword(ctx.Context(), userID, req.Password)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return http_error.NotFound(ctx, err.Error())
+		}
+		return http_error.InternalServerError(ctx, err.Error())
+	}
+
+	// Return success response
+	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Password set successfully",
+	})
 }

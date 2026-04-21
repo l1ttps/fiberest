@@ -11,6 +11,8 @@ import (
 	"fiberest/internal/models"
 	"fiberest/internal/modules/users/dto"
 
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -25,6 +27,9 @@ type UserService interface {
 	CreateUser(ctx context.Context, email string, name string, role models.UserRole) (*models.User, error)
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
 	FindByID(ctx context.Context, id string) (*models.User, error)
+	UpdateUser(ctx context.Context, id string, req dto.UpdateUserRequest) (*models.User, error)
+	SetPassword(ctx context.Context, userID string, password string) error
+	DeleteUser(ctx context.Context, id string) error
 	GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest) (*types.GetManyResponse[dto.UserResponse], error)
 }
 
@@ -156,4 +161,122 @@ func (s *service) GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest)
 	}
 
 	return response, nil
+}
+
+// UpdateUser updates user information by ID
+func (s *service) UpdateUser(ctx context.Context, id string, req dto.UpdateUserRequest) (*models.User, error) {
+	// Validate role if provided
+	if req.Role != "" {
+		if req.Role != string(models.RoleAdmin) && req.Role != string(models.RoleUser) {
+			return nil, fmt.Errorf("invalid role: %s", req.Role)
+		}
+	}
+
+	// Find existing user
+	user, err := s.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update fields if provided
+	if req.Email != "" {
+		// Check if email already exists for another user
+		var existingUser models.User
+		err := s.getDB(ctx).Where("email = ? AND id != ?", req.Email, id).First(&existingUser).Error
+		if err == nil {
+			return nil, ErrUserAlreadyExists
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("failed to check email: %w", err)
+		}
+		user.Email = req.Email
+	}
+	if req.Name != "" {
+		user.Name = req.Name
+	}
+	if req.Role != "" {
+		user.Role = models.UserRole(req.Role)
+	}
+
+	// Save changes
+	if err := s.getDB(ctx).Save(user).Error; err != nil {
+		return nil, fmt.Errorf("failed to update user: %w", err)
+	}
+
+	return user, nil
+}
+
+// DeleteUser removes a user by ID
+func (s *service) DeleteUser(ctx context.Context, id string) error {
+	// Check if user exists
+	_, err := s.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Delete the user
+	if err := s.getDB(ctx).Delete(&models.User{}, id).Error; err != nil {
+		return fmt.Errorf("failed to delete user: %w", err)
+	}
+
+	return nil
+}
+
+// hashPassword hashes a plain text password using bcrypt
+func (s *service) hashPassword(password string) (string, error) {
+	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", fmt.Errorf("failed to hash password: %w", err)
+	}
+	return string(hashedBytes), nil
+}
+
+// SetPassword sets a new password for a user by creating/updating their EMAIL account
+func (s *service) SetPassword(ctx context.Context, userID string, password string) error {
+	// Validate user exists
+	_, err := s.FindByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	// Hash the password
+	hashedPassword, err := s.hashPassword(password)
+	if err != nil {
+		return err
+	}
+
+	// Parse userID to UUID
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user ID format: %w", err)
+	}
+
+	// Find existing EMAIL account for this user
+	var account models.Account
+	err = s.getDB(ctx).
+		Where("user_id = ? AND type = ?", userUUID, models.AccountTypeEmail).
+		First(&account).Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Create new EMAIL account
+		account = models.Account{
+			UserID:    userUUID,
+			Type:      models.AccountTypeEmail,
+			Password:  hashedPassword,
+			IsPrimary: true,
+		}
+		if err := s.getDB(ctx).Create(&account).Error; err != nil {
+			return fmt.Errorf("failed to create account: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("failed to find account: %w", err)
+	} else {
+		// Update existing account password
+		account.Password = hashedPassword
+		if err := s.getDB(ctx).Save(&account).Error; err != nil {
+			return fmt.Errorf("failed to update account password: %w", err)
+		}
+	}
+
+	return nil
 }
