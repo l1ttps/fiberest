@@ -119,6 +119,95 @@ definitions:
 info:
   contact: {}
 paths:
+  /auth/init:
+    post:
+      consumes:
+      - application/json
+      description: Creates the very first administrator (admin) account for the system
+        using the provided email and password. This endpoint can only be called successfully
+        once, when no admin accounts exist in the system yet.
+      parameters:
+      - description: Admin initialization request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.InitAdminRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.InitAdminResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+      summary: Initialize first administrator account
+      tags:
+      - auth
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates a user using their email and password credentials.
+        On successful authentication, returns both JWT access token and refresh token,
+        and sets secure HTTP-only cookies for subsequent authenticated requests.
+      parameters:
+      - description: Login request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+      summary: User authentication login
+      tags:
+      - auth
+  /auth/refresh-token:
+    post:
+      consumes:
+      - application/json
+      description: Issues a new pair of JWT tokens (access token and refresh token)
+        using a valid existing refresh token. This endpoint allows users to maintain
+        their authenticated session without re-entering login credentials when their
+        access token expires.
+      parameters:
+      - description: Refresh token request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RefreshTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+      summary: Refresh JWT authentication tokens
+      tags:
+      - auth
   /health-check:
     get:
       consumes:
@@ -210,95 +299,6 @@ paths:
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
       summary: Get user details by ID
-      tags:
-      - users
-  /users/init:
-    post:
-      consumes:
-      - application/json
-      description: Creates the very first administrator (admin) account for the system
-        using the provided email and password. This endpoint can only be called successfully
-        once, when no admin accounts exist in the system yet.
-      parameters:
-      - description: Admin initialization request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.InitAdminRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/dto.InitAdminResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/http_error.ErrorResponse'
-      summary: Initialize first administrator account
-      tags:
-      - users
-  /users/login:
-    post:
-      consumes:
-      - application/json
-      description: Authenticates a user using their email and password credentials.
-        On successful authentication, returns both JWT access token and refresh token,
-        and sets secure HTTP-only cookies for subsequent authenticated requests.
-      parameters:
-      - description: Login request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.LoginRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.TokenResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/http_error.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/http_error.ErrorResponse'
-      summary: User authentication login
-      tags:
-      - users
-  /users/refresh-token:
-    post:
-      consumes:
-      - application/json
-      description: Issues a new pair of JWT tokens (access token and refresh token)
-        using a valid existing refresh token. This endpoint allows users to maintain
-        their authenticated session without re-entering login credentials when their
-        access token expires.
-      parameters:
-      - description: Refresh token request
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.RefreshTokenRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.TokenResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/http_error.ErrorResponse'
-      summary: Refresh JWT authentication tokens
       tags:
       - users
 swagger: "2.0"

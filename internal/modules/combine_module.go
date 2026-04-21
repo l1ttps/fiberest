@@ -1,6 +1,7 @@
 package modules
 
 import (
+	"fiberest/internal/modules/auth"
 	healthcheck "fiberest/internal/modules/health_check"
 	"fiberest/internal/modules/users"
 
@@ -9,5 +10,6 @@ import (
 
 var Module = fx.Options(
 	healthcheck.Module,
+	auth.Module,
 	users.Module,
 )
