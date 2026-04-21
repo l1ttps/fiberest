@@ -2,7 +2,7 @@ package auth
 
 import (
 	"fiberest/internal/database"
-	"fiberest/internal/modules/auth/models"
+	"fiberest/internal/models"
 
 	"go.uber.org/fx"
 )

@@ -10,9 +10,8 @@ import (
 
 	"fiberest/internal/common/constants"
 	"fiberest/internal/database"
+	"fiberest/internal/models"
 	"fiberest/internal/modules/auth/dto"
-	"fiberest/internal/modules/auth/models"
-	usermodels "fiberest/internal/modules/users/models"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
@@ -31,8 +30,8 @@ type AuthService interface {
 	CreateAdmin(ctx context.Context, req dto.InitAdminRequest) (*dto.InitAdminResponse, error)
 	Login(ctx context.Context, req dto.LoginRequest, ipAddress, userAgent string) (*dto.LoginResponse, error)
 	Logout(ctx context.Context, sessionToken string) error
-	FindByEmail(ctx context.Context, email string) (*usermodels.User, error)
-	FindByID(ctx context.Context, id string) (*usermodels.User, error)
+	FindByEmail(ctx context.Context, email string) (*models.User, error)
+	FindByID(ctx context.Context, id string) (*models.User, error)
 	VerifyPassword(hashedPassword string, plainPassword string) bool
 
 	// Session management
@@ -77,7 +76,7 @@ func (s *service) VerifyPassword(hashedPassword string, plainPassword string) bo
 func (s *service) CreateAdmin(ctx context.Context, req dto.InitAdminRequest) (*dto.InitAdminResponse, error) {
 	// Check if any admin already exists in the system
 	var adminCount int64
-	if err := s.getDB(ctx).Model(&usermodels.User{}).Where("role = ?", usermodels.RoleAdmin).Count(&adminCount).Error; err != nil {
+	if err := s.getDB(ctx).Model(&models.User{}).Where("role = ?", models.RoleAdmin).Count(&adminCount).Error; err != nil {
 		return nil, fmt.Errorf("failed to check existing admin: %w", err)
 	}
 	if adminCount > 0 {
@@ -91,10 +90,10 @@ func (s *service) CreateAdmin(ctx context.Context, req dto.InitAdminRequest) (*d
 	}
 
 	// Create the user
-	user := &usermodels.User{
+	user := &models.User{
 		Email: req.Email,
 		Name:  "Admin",
-		Role:  usermodels.RoleAdmin,
+		Role:  models.RoleAdmin,
 	}
 
 	if err := s.getDB(ctx).Create(user).Error; err != nil {
@@ -125,8 +124,8 @@ func (s *service) CreateAdmin(ctx context.Context, req dto.InitAdminRequest) (*d
 }
 
 // FindByEmail finds a user by their email address
-func (s *service) FindByEmail(ctx context.Context, email string) (*usermodels.User, error) {
-	var user usermodels.User
+func (s *service) FindByEmail(ctx context.Context, email string) (*models.User, error) {
+	var user models.User
 	if err := s.getDB(ctx).Where("email = ?", email).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound
@@ -137,8 +136,8 @@ func (s *service) FindByEmail(ctx context.Context, email string) (*usermodels.Us
 }
 
 // FindByID finds a user by their ID
-func (s *service) FindByID(ctx context.Context, id string) (*usermodels.User, error) {
-	var user usermodels.User
+func (s *service) FindByID(ctx context.Context, id string) (*models.User, error) {
+	var user models.User
 	if err := s.getDB(ctx).Where("id = ?", id).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound

@@ -1,9 +1,5 @@
 package models
 
-import (
-	"fiberest/internal/common/models"
-)
-
 // UserRole defines the role of a user in the system
 type UserRole string
 
@@ -17,7 +13,7 @@ const (
 // User represents a user account in the system.
 // It extends BaseModel to inherit common fields like ID, CreatedAt, UpdatedAt.
 type User struct {
-	models.BaseModel
+	BaseModel
 
 	// Email is the unique identifier for login
 	// Must be unique and not null

@@ -3,14 +3,12 @@ package models
 import (
 	"time"
 
-	commonModels "fiberest/internal/common/models"
-	userModels "fiberest/internal/modules/users/models"
 	"github.com/google/uuid"
 )
 
 // Session represents a user login session
 type Session struct {
-	commonModels.BaseModel
+	BaseModel
 
 	// SessionToken is the unique token for this session (stored in cookie)
 	SessionToken string `gorm:"uniqueIndex;not null;size:255" json:"sessionToken"`
@@ -19,7 +17,7 @@ type Session struct {
 	UserID uuid.UUID `gorm:"not null;index" json:"userId"`
 
 	// User relationship (many sessions belong to one user)
-	User userModels.User `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
+	User User `gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;" json:"user,omitempty"`
 
 	// ExpiresAt is when this session becomes invalid
 	ExpiresAt time.Time `gorm:"not null;index" json:"expiresAt"`

@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"fiberest/internal/modules/auth/models"
+	"fiberest/internal/models"
 	"fiberest/pkg/http_error"
 
 	"github.com/gofiber/fiber/v3"

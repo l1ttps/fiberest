@@ -8,8 +8,8 @@ import (
 
 	"fiberest/internal/common/types"
 	"fiberest/internal/database"
+	"fiberest/internal/models"
 	"fiberest/internal/modules/users/dto"
-	"fiberest/internal/modules/users/models"
 
 	"gorm.io/gorm"
 )

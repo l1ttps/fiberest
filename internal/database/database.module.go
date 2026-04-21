@@ -1,7 +1,7 @@
 package database
 
 import (
-	"fiberest/internal/modules/users/models"
+	"fiberest/internal/models"
 
 	"go.uber.org/fx"
 )
