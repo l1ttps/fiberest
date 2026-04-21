@@ -36,6 +36,7 @@ type AuthService interface {
 
 	// Session management
 	CreateSession(ctx context.Context, userID uuid.UUID, ipAddress, userAgent string) (*models.Session, error)
+	FindSessionBySessionId(ctx context.Context, sessionToken string) (*models.Session, error)
 	FindValidSession(ctx context.Context, sessionToken string) (*models.Session, error)
 	DeleteSession(ctx context.Context, sessionToken string) error
 }
@@ -178,14 +179,23 @@ func (s *service) CreateSession(ctx context.Context, userID uuid.UUID, ipAddress
 	return session, nil
 }
 
-// FindValidSession finds a session by token and checks if it's still valid
-func (s *service) FindValidSession(ctx context.Context, sessionToken string) (*models.Session, error) {
+// FindSessionBySessionId finds a session by its token
+func (s *service) FindSessionBySessionId(ctx context.Context, sessionToken string) (*models.Session, error) {
 	var session models.Session
-	if err := s.getDB(ctx).Where("session_token = ?", sessionToken).First(&session).Error; err != nil {
+	if err := s.getDB(ctx).Preload("User").Where("session_token = ?", sessionToken).First(&session).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrSessionNotFound
 		}
 		return nil, fmt.Errorf("failed to find session: %w", err)
+	}
+	return &session, nil
+}
+
+// FindValidSession finds a session by token and checks if it's still valid
+func (s *service) FindValidSession(ctx context.Context, sessionToken string) (*models.Session, error) {
+	session, err := s.FindSessionBySessionId(ctx, sessionToken)
+	if err != nil {
+		return nil, err
 	}
 
 	if !session.IsValid() {
@@ -194,7 +204,7 @@ func (s *service) FindValidSession(ctx context.Context, sessionToken string) (*m
 		return nil, errors.New("session expired")
 	}
 
-	return &session, nil
+	return session, nil
 }
 
 // DeleteSession removes a session by its token

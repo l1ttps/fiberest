@@ -37,6 +37,9 @@ func RegisterRoutes(app *fiber.App, controller *Controller) {
 
 	// POST /auth/logout - User logout
 	auth.Post("/logout", middlewares.Limiter(5, 60), controller.logout)
+
+	// GET /auth/session - Current session
+	auth.Get("/session", controller.session)
 }
 
 // initAdmin handles POST /auth/init request
@@ -145,4 +148,36 @@ func (c *Controller) logout(ctx fiber.Ctx) error {
 	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Logout successful",
 	})
+}
+
+// session handles GET /auth/session request
+// @Summary Get current session
+// @Description Returns the current active session details.
+// @Tags auth
+// @Produce json
+// @Success 200 {object} models.Session
+// @Failure 401 {object} http_error.ErrorResponse
+// @Router /auth/session [get]
+func (c *Controller) session(ctx fiber.Ctx) error {
+	// Get session token from cookie
+	sessionToken := ctx.Cookies("session_id")
+	if sessionToken == "" {
+		return http_error.Unauthorized(ctx, "No active session")
+	}
+
+	// Find session
+	session, err := c.service.FindSessionBySessionId(ctx.Context(), sessionToken)
+	if err != nil {
+		if errors.Is(err, ErrSessionNotFound) {
+			return http_error.Unauthorized(ctx, "Session not found or invalid")
+		}
+		return http_error.InternalServerError(ctx, err.Error())
+	}
+
+	// Check if session is valid
+	if !session.IsValid() {
+		return http_error.Unauthorized(ctx, "Session expired")
+	}
+
+	return ctx.Status(fiber.StatusOK).JSON(session)
 }

@@ -116,6 +116,32 @@
                 }
             }
         },
+        "/auth/session": {
+            "get": {
+                "description": "Returns the current active session details.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Get current session",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Session"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http_error.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/health-check": {
             "get": {
                 "description": "Check if the server is running and return \"OK\"",
@@ -354,6 +380,51 @@
                 },
                 "status": {
                     "type": "integer"
+                }
+            }
+        },
+        "models.Session": {
+            "type": "object",
+            "properties": {
+                "createdAt": {
+                    "description": "CreatedAt tracks when the record was created\nAutomatically set by GORM on create",
+                    "type": "string"
+                },
+                "expiresAt": {
+                    "description": "ExpiresAt is when this session becomes invalid",
+                    "type": "string"
+                },
+                "id": {
+                    "description": "ID is the primary key using UUID v4 format\nGORM tag ensures it's stored as uuid type in PostgreSQL with primary key constraint",
+                    "type": "string"
+                },
+                "ipAddress": {
+                    "description": "IPAddress stores the IP address where the session was created",
+                    "type": "string"
+                },
+                "sessionToken": {
+                    "description": "SessionToken is the unique token for this session (stored in cookie)",
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "description": "UpdatedAt tracks when the record was last modified\nAutomatically updated by GORM on save/update",
+                    "type": "string"
+                },
+                "user": {
+                    "description": "User relationship (many sessions belong to one user)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.User"
+                        }
+                    ]
+                },
+                "userAgent": {
+                    "description": "UserAgent stores the browser/user agent string",
+                    "type": "string"
+                },
+                "userId": {
+                    "description": "UserID is the foreign key to the user",
+                    "type": "string"
                 }
             }
         },
