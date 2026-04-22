@@ -11,6 +11,13 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
+// AuthService interface defines required methods for auth guard
+type AuthService interface {
+	FindSessionBySessionId(ctx context.Context, sessionToken string) (*models.Session, error)
+	UpdateExpiresSession(ctx context.Context, session *models.Session) error
+	DeleteSession(ctx context.Context, sessionToken string) error
+}
+
 // publicRoutes defines the list of paths that do not require authentication
 var publicRoutes = []string{
 	"health-check",
@@ -46,9 +53,7 @@ func isPublicRoute(path string) bool {
 }
 
 // AuthGuard validates the session token from the session_id cookie
-func AuthGuard(authService interface {
-	FindValidSession(ctx context.Context, sessionToken string) (*models.Session, error)
-}) fiber.Handler {
+func AuthGuard(authService AuthService) fiber.Handler {
 	return func(c fiber.Ctx) error {
 		if isPublicRoute(c.Path()) {
 			return c.Next()
@@ -60,10 +65,20 @@ func AuthGuard(authService interface {
 			return http_error.Unauthorized(c, "Missing session token")
 		}
 
-		// Validate session
-		session, err := authService.FindValidSession(c.Context(), sessionToken)
+		// Find session without validation
+		session, err := authService.FindSessionBySessionId(c.Context(), sessionToken)
 		if err != nil {
-			return http_error.Unauthorized(c, "Invalid or expired session")
+			return http_error.Unauthorized(c, "Invalid session")
+		}
+
+		// Auto-extend remember-me session if eligible (best effort, ignore errors)
+		_ = authService.UpdateExpiresSession(c.Context(), session)
+
+		// Validate session after potential extension
+		if !session.IsValid() {
+			// Delete expired session
+			_ = authService.DeleteSession(c.Context(), sessionToken)
+			return http_error.Unauthorized(c, "Session expired")
 		}
 
 		// Store user info in context for downstream handlers

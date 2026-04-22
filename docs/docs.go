@@ -103,7 +103,7 @@ const docTemplate = `{
         },
         "/auth/login": {
             "post": {
-                "description": "Authenticates a user using their email and password credentials. On successful authentication, creates a session and sets an HTTP-only cookie for subsequent authenticated requests.",
+                "description": "Authenticates a user using their email and password credentials. On successful authentication, creates a session and sets an HTTP-only cookie for subsequent authenticated requests. Set \"remember\" to true for extended session duration (30 days).",
                 "consumes": [
                     "application/json"
                 ],
@@ -629,12 +629,20 @@ const docTemplate = `{
                 },
                 "password": {
                     "type": "string"
+                },
+                "remember": {
+                    "description": "Optional: if true, extends session duration",
+                    "type": "boolean"
                 }
             }
         },
         "dto.LoginResponse": {
             "type": "object",
             "properties": {
+                "expiresAt": {
+                    "description": "Session expiration time (ISO 8601 format)",
+                    "type": "string"
+                },
                 "message": {
                     "type": "string",
                     "example": "Login successful"
@@ -733,6 +741,10 @@ const docTemplate = `{
                 "ipAddress": {
                     "description": "IPAddress stores the IP address where the session was created",
                     "type": "string"
+                },
+                "rememberMe": {
+                    "description": "RememberMe indicates if this session should persist longer (remember me)",
+                    "type": "boolean"
                 },
                 "sessionToken": {
                     "description": "SessionToken is the unique token for this session (stored in cookie)",

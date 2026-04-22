@@ -37,10 +37,11 @@ type AuthService interface {
 	VerifyPassword(hashedPassword string, plainPassword string) bool
 
 	// Session management
-	CreateSession(ctx context.Context, userID uuid.UUID, ipAddress, userAgent string) (*models.Session, error)
+	CreateSession(ctx context.Context, userID uuid.UUID, ipAddress, userAgent string, rememberMe bool) (*models.Session, error)
 	FindSessionBySessionId(ctx context.Context, sessionToken string) (*models.Session, error)
 	FindValidSession(ctx context.Context, sessionToken string) (*models.Session, error)
 	DeleteSession(ctx context.Context, sessionToken string) error
+	UpdateExpiresSession(ctx context.Context, session *models.Session) error
 }
 
 type service struct {
@@ -160,18 +161,29 @@ func (s *service) generateSessionToken() (string, error) {
 }
 
 // CreateSession creates a new session for a user
-func (s *service) CreateSession(ctx context.Context, userID uuid.UUID, ipAddress, userAgent string) (*models.Session, error) {
+func (s *service) CreateSession(ctx context.Context, userID uuid.UUID, ipAddress, userAgent string, rememberMe bool) (*models.Session, error) {
 	sessionToken, err := s.generateSessionToken()
 	if err != nil {
 		return nil, err
 	}
 
+	// Determine expiration based on remember me flag
+	var expiresAt time.Time
+	if rememberMe {
+		// Extended session duration for "remember me" (7 days)
+		expiresAt = time.Now().Add(constants.SessionDuration)
+	} else {
+		// Standard session duration (1 day)
+		expiresAt = time.Now().Add(24 * time.Hour)
+	}
+
 	session := &models.Session{
 		SessionToken: sessionToken,
 		UserID:       userID,
-		ExpiresAt:    time.Now().Add(constants.SessionDuration),
+		ExpiresAt:    expiresAt,
 		IPAddress:    ipAddress,
 		UserAgent:    userAgent,
+		RememberMe:   rememberMe,
 	}
 
 	if err := s.getDB(ctx).Create(session).Error; err != nil {
@@ -242,8 +254,8 @@ func (s *service) Login(ctx context.Context, req dto.LoginRequest, ipAddress, us
 		return nil, ErrInvalidCredential
 	}
 
-	// Create new session
-	session, err := s.CreateSession(ctx, user.ID, ipAddress, userAgent)
+	// Create new session with remember me flag
+	session, err := s.CreateSession(ctx, user.ID, ipAddress, userAgent, req.Remember)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
@@ -251,6 +263,7 @@ func (s *service) Login(ctx context.Context, req dto.LoginRequest, ipAddress, us
 	return &dto.LoginResponse{
 		Message:      "Login successful",
 		SessionToken: session.SessionToken,
+		ExpiresAt:    session.ExpiresAt.Format(time.RFC3339),
 	}, nil
 }
 
@@ -285,4 +298,40 @@ func (s *service) ChangePassword(ctx context.Context, userID uuid.UUID, req dto.
 	return &dto.ChangePasswordResponse{
 		Message: "Password changed successfully",
 	}, nil
+}
+
+// UpdateExpiresSession extends the expiration of a remember-me session by 7 days
+// only when at least 24 hours have passed since the last update.
+// This creates a rolling window:
+// - Daily use → session never expires (each request extends by 7 days)
+// - No use for 7+ days → session expires naturally
+// - Maximum 1 DB update per day per session
+func (s *service) UpdateExpiresSession(ctx context.Context, session *models.Session) error {
+	if !session.RememberMe {
+		return nil
+	}
+
+	if !session.IsValid() {
+		return nil
+	}
+
+	now := time.Now()
+
+	if now.Sub(session.UpdatedAt) < 24*time.Hour {
+		return nil
+	}
+
+	newExpiresAt := session.ExpiresAt.Add(constants.SessionDuration)
+
+	session.ExpiresAt = newExpiresAt
+	session.UpdatedAt = now
+
+	if err := s.getDB(ctx).Model(session).Updates(map[string]interface{}{
+		"expires_at": newExpiresAt,
+		"updated_at": now,
+	}).Error; err != nil {
+		return fmt.Errorf("failed to update session expiration: %w", err)
+	}
+
+	return nil
 }

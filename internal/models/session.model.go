@@ -27,6 +27,9 @@ type Session struct {
 
 	// UserAgent stores the browser/user agent string
 	UserAgent string `gorm:"size:500" json:"userAgent"`
+
+	// RememberMe indicates if this session should persist longer (remember me)
+	RememberMe bool `gorm:"not null;default:false" json:"rememberMe"`
 }
 
 // TableName specifies the database table name

@@ -2,7 +2,6 @@ package auth
 
 import (
 	"errors"
-	"fiberest/internal/common/constants"
 	"fiberest/internal/common/validators"
 	"fiberest/internal/middlewares"
 	"fiberest/internal/modules/auth/dto"
@@ -79,7 +78,7 @@ func (c *Controller) initAdmin(ctx fiber.Ctx) error {
 
 // login handles POST /auth/login request
 // @Summary User authentication login
-// @Description Authenticates a user using their email and password credentials. On successful authentication, creates a session and sets an HTTP-only cookie for subsequent authenticated requests.
+// @Description Authenticates a user using their email and password credentials. On successful authentication, creates a session and sets an HTTP-only cookie for subsequent authenticated requests. Set "remember" to true for extended session duration (30 days).
 // @Tags Auth
 // @Accept json
 // @Produce json
@@ -104,11 +103,17 @@ func (c *Controller) login(ctx fiber.Ctx) error {
 		return http_error.BadRequest(ctx, err.Error())
 	}
 
+	// Parse expiration time from response
+	expiresAt, err := time.Parse(time.RFC3339, response.ExpiresAt)
+	if err != nil {
+		return http_error.InternalServerError(ctx, "invalid expiration format")
+	}
+
 	// Set session cookie with the token from service
 	ctx.Cookie(&fiber.Cookie{
 		Name:     "session_id",
 		Value:    response.SessionToken,
-		Expires:  time.Now().Add(constants.SessionDuration),
+		Expires:  expiresAt,
 		HTTPOnly: true,
 		Secure:   true,
 		SameSite: "Lax",

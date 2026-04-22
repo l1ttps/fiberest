@@ -18,12 +18,14 @@ type InitAdminResponse struct {
 type LoginRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required"`
+	Remember bool   `json:"remember"` // Optional: if true, extends session duration
 }
 
 // LoginResponse represents the response after successful login
 type LoginResponse struct {
 	Message      string `json:"message" example:"Login successful"`
-	SessionToken string `json:"-"` // Not exposed in JSON, used for setting cookie
+	SessionToken string `json:"-"`         // Not exposed in JSON, used for setting cookie
+	ExpiresAt    string `json:"expiresAt"` // Session expiration time (ISO 8601 format)
 }
 
 // RefreshTokenRequest represents the request body for token refresh
