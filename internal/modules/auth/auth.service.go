@@ -23,6 +23,7 @@ var (
 	ErrAdminExists       = errors.New("admin user already exists")
 	ErrInvalidCredential = errors.New("invalid email or password")
 	ErrSessionNotFound   = errors.New("session not found")
+	ErrWrongPassword     = errors.New("current password is incorrect")
 )
 
 // AuthService defines the business logic for authentication
@@ -30,6 +31,7 @@ type AuthService interface {
 	CreateAdmin(ctx context.Context, req dto.InitAdminRequest) (*dto.InitAdminResponse, error)
 	Login(ctx context.Context, req dto.LoginRequest, ipAddress, userAgent string) (*dto.LoginResponse, error)
 	Logout(ctx context.Context, sessionToken string) error
+	ChangePassword(ctx context.Context, userID uuid.UUID, req dto.ChangePasswordRequest) (*dto.ChangePasswordResponse, error)
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
 	FindByID(ctx context.Context, id string) (*models.User, error)
 	VerifyPassword(hashedPassword string, plainPassword string) bool
@@ -255,4 +257,32 @@ func (s *service) Login(ctx context.Context, req dto.LoginRequest, ipAddress, us
 // Logout removes the current session
 func (s *service) Logout(ctx context.Context, sessionToken string) error {
 	return s.DeleteSession(ctx, sessionToken)
+}
+
+// ChangePassword changes the user's password after verifying the current password
+func (s *service) ChangePassword(ctx context.Context, userID uuid.UUID, req dto.ChangePasswordRequest) (*dto.ChangePasswordResponse, error) {
+	var account models.Account
+	if err := s.getDB(ctx).Where("user_id = ? AND type = ?", userID, models.AccountTypeEmail).First(&account).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("account not found: %w", err)
+		}
+		return nil, fmt.Errorf("failed to find account: %w", err)
+	}
+
+	if !s.VerifyPassword(account.Password, req.CurrentPassword) {
+		return nil, ErrWrongPassword
+	}
+
+	hashedPassword, err := s.hashPassword(req.NewPassword)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.getDB(ctx).Model(&account).Update("password", hashedPassword).Error; err != nil {
+		return nil, fmt.Errorf("failed to update password: %w", err)
+	}
+
+	return &dto.ChangePasswordResponse{
+		Message: "Password changed successfully",
+	}, nil
 }

@@ -1,4 +1,21 @@
 definitions:
+  dto.ChangePasswordRequest:
+    properties:
+      currentPassword:
+        type: string
+      newPassword:
+        minLength: 8
+        type: string
+    required:
+    - currentPassword
+    - newPassword
+    type: object
+  dto.ChangePasswordResponse:
+    properties:
+      message:
+        example: Password changed successfully
+        type: string
+    type: object
   dto.GetManyUsersExample:
     properties:
       data:
@@ -172,6 +189,37 @@ definitions:
 info:
   contact: {}
 paths:
+  /auth/change-password:
+    post:
+      consumes:
+      - application/json
+      description: Changes the authenticated user's password. Requires the current
+        password to be verified before setting the new password.
+      parameters:
+      - description: Change password request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ChangePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ChangePasswordResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+      summary: Change user password
+      tags:
+      - Auth
   /auth/init:
     post:
       consumes:

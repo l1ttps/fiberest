@@ -31,3 +31,14 @@ type LoginResponse struct {
 type RefreshTokenRequest struct {
 	RefreshToken string `json:"refreshToken" validate:"required"`
 }
+
+// ChangePasswordRequest represents the request body for changing password
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword" validate:"required"`
+	NewPassword     string `json:"newPassword" validate:"required,min=8"`
+}
+
+// ChangePasswordResponse represents the response after changing password
+type ChangePasswordResponse struct {
+	Message string `json:"message" example:"Password changed successfully"`
+}

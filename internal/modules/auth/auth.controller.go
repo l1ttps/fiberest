@@ -38,6 +38,9 @@ func RegisterRoutes(app *fiber.App, controller *Controller) {
 	// POST /auth/logout - User logout
 	auth.Post("/logout", middlewares.Limiter(5, 60), controller.logout)
 
+	// POST /auth/change-password - Change password
+	auth.Post("/change-password", middlewares.Limiter(5, 60), controller.changePassword)
+
 	// GET /auth/session - Current session
 	auth.Get("/session", controller.session)
 }
@@ -180,4 +183,49 @@ func (c *Controller) session(ctx fiber.Ctx) error {
 	}
 
 	return ctx.Status(fiber.StatusOK).JSON(session)
+}
+
+// changePassword handles POST /auth/change-password request
+// @Summary Change user password
+// @Description Changes the authenticated user's password. Requires the current password to be verified before setting the new password.
+// @Tags Auth
+// @Accept json
+// @Produce json
+// @Param request body dto.ChangePasswordRequest true "Change password request"
+// @Success 200 {object} dto.ChangePasswordResponse
+// @Failure 400 {object} http_error.ErrorResponse
+// @Failure 401 {object} http_error.ErrorResponse
+// @Router /auth/change-password [post]
+func (c *Controller) changePassword(ctx fiber.Ctx) error {
+	sessionToken := ctx.Cookies("session_id")
+	if sessionToken == "" {
+		return http_error.Unauthorized(ctx, "No active session")
+	}
+
+	session, err := c.service.FindSessionBySessionId(ctx.Context(), sessionToken)
+	if err != nil {
+		if errors.Is(err, ErrSessionNotFound) {
+			return http_error.Unauthorized(ctx, "Session not found or invalid")
+		}
+		return http_error.InternalServerError(ctx, err.Error())
+	}
+
+	if !session.IsValid() {
+		return http_error.Unauthorized(ctx, "Session expired")
+	}
+
+	var req dto.ChangePasswordRequest
+	if err := validators.ParseAndValidate(ctx, &req); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
+
+	response, err := c.service.ChangePassword(ctx.Context(), session.UserID, req)
+	if err != nil {
+		if errors.Is(err, ErrWrongPassword) {
+			return http_error.BadRequest(ctx, err.Error())
+		}
+		return http_error.InternalServerError(ctx, err.Error())
+	}
+
+	return ctx.Status(fiber.StatusOK).JSON(response)
 }
