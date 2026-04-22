@@ -68,7 +68,7 @@ func AuthGuard(authService interface {
 
 		// Store user info in context for downstream handlers
 		c.Locals("user", &session.User)
-		c.Locals("user_id", session.UserID)
+		c.Locals("user_id", session.UserID.String())
 
 		return c.Next()
 	}

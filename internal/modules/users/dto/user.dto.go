@@ -27,7 +27,12 @@ type GetManyUsersExample struct {
 	Total       int64          `json:"total"`
 }
 
-// UpdateUserRequest defines the payload for updating a user
+// UpdateMyProfileRequest defines the payload for updating own profile
+type UpdateMyProfileRequest struct {
+	Name string `json:"name" validate:"required,min=1,max=255"`
+}
+
+// UpdateUserRequest defines the payload for updating a user (admin only)
 type UpdateUserRequest struct {
 	Email string `json:"email" validate:"omitempty,email"`
 	Name  string `json:"name" validate:"omitempty,min=1,max=255"`

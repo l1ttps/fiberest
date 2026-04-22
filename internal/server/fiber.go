@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"fiberest/docs" // Import swagger docs
+	"fiberest/internal/common/constants"
 	"fiberest/internal/configs"
 	"fiberest/internal/middlewares"
 	"fiberest/internal/modules/auth"
@@ -18,17 +19,6 @@ import (
 	"go.uber.org/fx"
 )
 
-// @title Fiberest API
-// @version 1.0
-// @description This is a sample server for a Fiber application.
-// @termsOfService http://swagger.io/terms/
-// @contact.name API Support
-// @contact.email fiber@swagger.io
-// @license.name Apache 2.0
-// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
-// @host localhost:8080
-// @BasePath /
-// NewFiberApp creates a new Fiber app instance without starting it
 func NewFiberApp(cfg *configs.Config, authService auth.AuthService) *fiber.App {
 	app := fiber.New()
 
@@ -43,9 +33,10 @@ func NewFiberApp(cfg *configs.Config, authService auth.AuthService) *fiber.App {
 	// Register Swagger route - use FileContentString to bypass swag.ReadDoc()
 	// This avoids conflict between swag v1 and v2 versions
 	swaggerContent := docs.SwaggerInfo.ReadDoc()
+
 	app.Get("/docs/*", scalar.New(scalar.Config{
 		FileContentString: swaggerContent,
-		Title:             "Fiberest API Documentation",
+		Title:             fmt.Sprintf("%s API Documentation", constants.ApplicationName),
 		CacheAge:          3600,
 		ForceOffline:      scalar.ForceOfflineTrue,
 		FallbackCacheAge:  86400,

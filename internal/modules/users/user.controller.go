@@ -25,23 +25,28 @@ func NewController(app *fiber.App, service UserService) *Controller {
 
 // UserRoutes is invoked by fx to register user routes
 func UserRoutes(app *fiber.App, controller *Controller) {
-	// Create a route group for /users
-	users := app.Group("/users", middlewares.RoleGuard(models.RoleAdmin))
 
+	// Create a route group for /users (admin only)
+	users := app.Group("/users")
+
+	// PATCH /users/me - Update own information (authenticated users only)
+	users.Patch("/me", controller.patchMe)
+
+	adminOnly := users.Group("/admin", middlewares.RoleGuard(models.RoleAdmin))
 	// GET /users - Get paginated list of users
-	users.Get("/", controller.getManyUsers)
+	adminOnly.Get("/", controller.getManyUsers)
 
 	// GET /users/:id - Get user by ID
-	users.Get("/:id", controller.getUserByID)
+	adminOnly.Get("/:id", controller.getUserByID)
 
 	// PUT /users/:id - Update user by ID
-	users.Put("/:id", controller.updateUserByID)
+	adminOnly.Put("/:id", controller.updateUserByID)
 
 	// DELETE /users/:id - Delete user by ID
-	users.Delete("/:id", controller.deleteUserByID)
+	adminOnly.Delete("/:id", controller.deleteUserByID)
 
 	// POST /users/set-password/:id - Set password for user
-	users.Post("/set-password/:id", controller.setPassword)
+	adminOnly.Post("/set-password/:id", controller.setPassword)
 }
 
 // getManyUsers handles GET /users request
@@ -230,4 +235,36 @@ func (c *Controller) setPassword(ctx fiber.Ctx) error {
 	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Password set successfully",
 	})
+}
+
+// patchMe handles PATCH /users/me request
+// @Summary Update my profile
+// @Description Allows an authenticated user to update their profile (name and email). User ID is extracted from the session token.
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param request body dto.UpdateMyProfileRequest true "Profile data (name required, email optional)"
+// @Success 200 {object} models.User
+// @Failure 400 {object} http_error.ErrorResponse
+// @Failure 401 {object} http_error.ErrorResponse
+// @Failure 409 {object} http_error.ErrorResponse
+// @Router /users/me [patch]
+func (c *Controller) patchMe(ctx fiber.Ctx) error {
+	// Get user ID from context (set by AuthGuard middleware)
+	userID, _ := ctx.Locals("user_id").(string)
+
+	// Parse request body
+	var req dto.UpdateMyProfileRequest
+	if err := validators.ParseAndValidate(ctx, &req); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
+
+	// Call service to update profile
+	user, err := c.service.UpdateMyProfile(ctx.Context(), userID, req)
+	if err != nil {
+		return http_error.InternalServerError(ctx, err.Error())
+	}
+
+	// Return success response
+	return ctx.Status(fiber.StatusOK).JSON(user)
 }

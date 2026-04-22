@@ -28,6 +28,7 @@ type UserService interface {
 	FindByEmail(ctx context.Context, email string) (*models.User, error)
 	FindByID(ctx context.Context, id string) (*models.User, error)
 	UpdateUser(ctx context.Context, id string, req dto.UpdateUserRequest) (*models.User, error)
+	UpdateMyProfile(ctx context.Context, userID string, req dto.UpdateMyProfileRequest) (*models.User, error)
 	SetPassword(ctx context.Context, userID string, password string) error
 	DeleteUser(ctx context.Context, id string) error
 	GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest) (*types.GetManyResponse[dto.UserResponse], error)
@@ -161,6 +162,26 @@ func (s *service) GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest)
 	}
 
 	return response, nil
+}
+
+// UpdateMyProfile updates the current user's own profile information
+// Only allows updating name — role and email cannot be changed via this endpoint
+func (s *service) UpdateMyProfile(ctx context.Context, userID string, req dto.UpdateMyProfileRequest) (*models.User, error) {
+	// Find existing user
+	user, err := s.FindByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update name
+	user.Name = req.Name
+
+	// Save changes
+	if err := s.getDB(ctx).Save(user).Error; err != nil {
+		return nil, fmt.Errorf("failed to update profile: %w", err)
+	}
+
+	return user, nil
 }
 
 // UpdateUser updates user information by ID

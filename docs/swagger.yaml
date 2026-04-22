@@ -78,6 +78,15 @@ definitions:
     required:
     - password
     type: object
+  dto.UpdateMyProfileRequest:
+    properties:
+      name:
+        maxLength: 255
+        minLength: 1
+        type: string
+    required:
+    - name
+    type: object
   dto.UpdateUserRequest:
     properties:
       email:
@@ -472,6 +481,41 @@ paths:
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
       summary: Update user by ID
+      tags:
+      - Users
+  /users/me:
+    patch:
+      consumes:
+      - application/json
+      description: Allows an authenticated user to update their profile (name and
+        email). User ID is extracted from the session token.
+      parameters:
+      - description: Profile data (name required, email optional)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateMyProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.User'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+      summary: Update my profile
       tags:
       - Users
   /users/set-password/{id}:
