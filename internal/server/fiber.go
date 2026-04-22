@@ -22,6 +22,14 @@ import (
 func NewFiberApp(cfg *configs.Config, authService auth.AuthService) *fiber.App {
 	app := fiber.New()
 
+	app.Get("/", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).SendString(constants.ApplicationName)
+	})
+
+	app.Get("/health-check", func(c fiber.Ctx) error {
+		return c.Status(fiber.StatusOK).SendString("OK")
+	})
+
 	// Configure CORS middleware
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},

@@ -296,29 +296,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/health-check": {
-            "get": {
-                "description": "Check if the server is running and return \"OK\"",
-                "consumes": [
-                    "text/plain"
-                ],
-                "produces": [
-                    "text/plain"
-                ],
-                "tags": [
-                    "Health Check"
-                ],
-                "summary": "Check health",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/users": {
             "get": {
                 "description": "Returns a paginated list of all users in the system with support for pagination, search by name/email, and filtering by user role (ADMIN or USER). Response includes comprehensive pagination metadata: total users count, current page number, total pages, and items per page.",

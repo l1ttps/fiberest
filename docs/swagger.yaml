@@ -433,21 +433,6 @@ paths:
       summary: Revoke a session by ID
       tags:
       - Auth
-  /health-check:
-    get:
-      consumes:
-      - text/plain
-      description: Check if the server is running and return "OK"
-      produces:
-      - text/plain
-      responses:
-        "200":
-          description: OK
-          schema:
-            type: string
-      summary: Check health
-      tags:
-      - Health Check
   /users:
     get:
       consumes:
