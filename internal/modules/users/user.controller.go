@@ -50,9 +50,9 @@ func UserRoutes(app *fiber.App, controller *Controller) {
 }
 
 // getManyUsers handles GET /users request
-// @Summary Get paginated users list with filters
+// @Summary Get many users
 // @Description Returns a paginated list of all users in the system with support for pagination, search by name/email, and filtering by user role (ADMIN or USER). Response includes comprehensive pagination metadata: total users count, current page number, total pages, and items per page.
-// @Tags Users
+// @Tags Admin
 // @Accept json
 // @Produce json
 // @Param limit query int false "Number of items per page (default: 10, max: 100)" minimum(1) maximum(100) default(10)
@@ -96,7 +96,7 @@ func (c *Controller) getManyUsers(ctx fiber.Ctx) error {
 // getUserByID handles GET /users/:id request
 // @Summary Get user details by ID
 // @Description Retrieves complete detailed information about a specific user using their unique identifier. Returns a 404 Not Found error if no user exists with the provided ID.
-// @Tags Users
+// @Tags Admin
 // @Accept json
 // @Produce json
 // @Param id path string true "User ID"
@@ -127,7 +127,7 @@ func (c *Controller) getUserByID(ctx fiber.Ctx) error {
 // updateUserByID handles PUT /users/:id request
 // @Summary Update user by ID
 // @Description Updates user information (email, name, role) by user ID. Only provided fields will be updated. Returns updated user data.
-// @Tags Users
+// @Tags Admin
 // @Accept json
 // @Produce json
 // @Param id path string true "User ID"
@@ -169,7 +169,7 @@ func (c *Controller) updateUserByID(ctx fiber.Ctx) error {
 // deleteUserByID handles DELETE /users/:id request
 // @Summary Delete user by ID
 // @Description Permanently removes a user from the system by their unique identifier. Returns 204 No Content on success.
-// @Tags Users
+// @Tags Admin
 // @Accept json
 // @Produce json
 // @Param id path string true "User ID"
@@ -200,7 +200,7 @@ func (c *Controller) deleteUserByID(ctx fiber.Ctx) error {
 // setPassword handles POST /users/set-password/:id request
 // @Summary Set password for a user
 // @Description Sets or updates the password for a user's EMAIL authentication account. Only admins can set passwords for any user.
-// @Tags Users
+// @Tags Admin
 // @Accept json
 // @Produce json
 // @Param id path string true "User ID"

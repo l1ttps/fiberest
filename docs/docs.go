@@ -208,7 +208,7 @@ const docTemplate = `{
                 "tags": [
                     "Auth"
                 ],
-                "summary": "Get all sessions for current user",
+                "summary": "Get many sessions",
                 "parameters": [
                     {
                         "maximum": 100,
@@ -329,9 +329,9 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Users"
+                    "Admin"
                 ],
-                "summary": "Get paginated users list with filters",
+                "summary": "Get many users",
                 "parameters": [
                     {
                         "maximum": 100,
@@ -445,7 +445,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Users"
+                    "Admin"
                 ],
                 "summary": "Set password for a user",
                 "parameters": [
@@ -501,7 +501,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Users"
+                    "Admin"
                 ],
                 "summary": "Get user details by ID",
                 "parameters": [
@@ -543,7 +543,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Users"
+                    "Admin"
                 ],
                 "summary": "Update user by ID",
                 "parameters": [
@@ -600,7 +600,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Users"
+                    "Admin"
                 ],
                 "summary": "Delete user by ID",
                 "parameters": [

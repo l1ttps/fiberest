@@ -244,7 +244,7 @@ func (c *Controller) changePassword(ctx fiber.Ctx) error {
 }
 
 // getSessions handles GET /auth/sessions request
-// @Summary Get all sessions for current user
+// @Summary Get many sessions
 // @Description Retrieves a paginated list of sessions for the currently authenticated user.
 // @Tags Auth
 // @Produce json

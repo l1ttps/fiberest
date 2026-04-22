@@ -400,7 +400,7 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
-      summary: Get all sessions for current user
+      summary: Get many sessions
       tags:
       - Auth
   /auth/sessions/{id}:
@@ -492,9 +492,9 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
-      summary: Get paginated users list with filters
+      summary: Get many users
       tags:
-      - Users
+      - Admin
   /users/{id}:
     delete:
       consumes:
@@ -522,7 +522,7 @@ paths:
             $ref: '#/definitions/http_error.ErrorResponse'
       summary: Delete user by ID
       tags:
-      - Users
+      - Admin
     get:
       consumes:
       - application/json
@@ -552,7 +552,7 @@ paths:
             $ref: '#/definitions/http_error.ErrorResponse'
       summary: Get user details by ID
       tags:
-      - Users
+      - Admin
     put:
       consumes:
       - application/json
@@ -591,7 +591,7 @@ paths:
             $ref: '#/definitions/http_error.ErrorResponse'
       summary: Update user by ID
       tags:
-      - Users
+      - Admin
   /users/me:
     patch:
       consumes:
@@ -664,5 +664,5 @@ paths:
             $ref: '#/definitions/http_error.ErrorResponse'
       summary: Set password for a user
       tags:
-      - Users
+      - Admin
 swagger: "2.0"
