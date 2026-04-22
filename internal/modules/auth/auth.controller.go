@@ -42,6 +42,9 @@ func RegisterRoutes(app *fiber.App, controller *Controller) {
 
 	// GET /auth/session - Current session
 	auth.Get("/session", controller.session)
+
+	// GET /auth/sessions - Get many sessions for a user
+	auth.Get("/sessions", controller.getSessions)
 }
 
 // initAdmin handles POST /auth/init request
@@ -233,4 +236,69 @@ func (c *Controller) changePassword(ctx fiber.Ctx) error {
 	}
 
 	return ctx.Status(fiber.StatusOK).JSON(response)
+}
+
+// getSessions handles GET /auth/sessions request
+// @Summary Get all sessions for current user
+// @Description Retrieves a paginated list of sessions for the currently authenticated user.
+// @Tags Auth
+// @Produce json
+// @Param request query dto.GetManySessionsRequest true "Get sessions request"
+// @Success 200 {object} dto.GetManySessionsResponse
+// @Failure 400 {object} http_error.ErrorResponse
+// @Failure 401 {object} http_error.ErrorResponse
+// @Router /auth/sessions [get]
+func (c *Controller) getSessions(ctx fiber.Ctx) error {
+	userID, ok := ctx.Locals("user_id").(string)
+	if !ok || userID == "" {
+		return http_error.Unauthorized(ctx, "User not authenticated")
+	}
+
+	var req dto.GetManySessionsRequest
+
+	// Parse query parameters
+	if err := ctx.Bind().Query(&req); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
+
+	// Set default values if not provided
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+	if req.Page <= 0 {
+		req.Page = 1
+	}
+
+	// Validate parsed data
+	if err := validators.ValidateStruct(&req); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
+
+	sessions, total, err := c.service.FindSessionsByUserID(ctx.Context(), userID, req.Limit, req.Page)
+	if err != nil {
+		return http_error.InternalServerError(ctx, err.Error())
+	}
+
+	data := make([]dto.SessionResponse, len(sessions))
+	for i, s := range sessions {
+		data[i] = dto.SessionResponse{
+			ID:         s.ID.String(),
+			UserID:     s.UserID.String(),
+			ExpiresAt:  s.ExpiresAt,
+			IPAddress:  s.IPAddress,
+			UserAgent:  s.UserAgent,
+			RememberMe: s.RememberMe,
+			CreatedAt:  s.CreatedAt,
+		}
+	}
+
+	hasNextPage := int64(req.Page*req.Limit) < total
+
+	return ctx.Status(fiber.StatusOK).JSON(dto.GetManySessionsResponse{
+		Data:        data,
+		Limit:       req.Limit,
+		Page:        req.Page,
+		HasNextPage: hasNextPage,
+		Total:       total,
+	})
 }

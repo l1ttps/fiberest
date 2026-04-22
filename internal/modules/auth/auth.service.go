@@ -40,6 +40,7 @@ type AuthService interface {
 	CreateSession(ctx context.Context, userID uuid.UUID, ipAddress, userAgent string, rememberMe bool) (*models.Session, error)
 	FindSessionBySessionId(ctx context.Context, sessionToken string) (*models.Session, error)
 	FindValidSession(ctx context.Context, sessionToken string) (*models.Session, error)
+	FindSessionsByUserID(ctx context.Context, userID string, limit, page int) ([]models.Session, int64, error)
 	DeleteSession(ctx context.Context, sessionToken string) error
 	UpdateExpiresSession(ctx context.Context, session *models.Session) error
 }
@@ -334,4 +335,29 @@ func (s *service) UpdateExpiresSession(ctx context.Context, session *models.Sess
 	}
 
 	return nil
+}
+
+// FindSessionsByUserID retrieves sessions for a specific user with pagination
+func (s *service) FindSessionsByUserID(ctx context.Context, userID string, limit, page int) ([]models.Session, int64, error) {
+	var sessions []models.Session
+	var total int64
+
+	// Get total count
+	if err := s.getDB(ctx).Model(&models.Session{}).Where("user_id = ?", userID).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count sessions: %w", err)
+	}
+
+	// Calculate offset
+	offset := (page - 1) * limit
+
+	// Fetch sessions with pagination
+	if err := s.getDB(ctx).Where("user_id = ?", userID).
+		Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&sessions).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to find sessions: %w", err)
+	}
+
+	return sessions, total, nil
 }

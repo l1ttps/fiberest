@@ -32,7 +32,7 @@ func UserRoutes(app *fiber.App, controller *Controller) {
 	// PATCH /users/me - Update own information (authenticated users only)
 	users.Patch("/me", controller.patchMe)
 
-	adminOnly := users.Group("/admin", middlewares.RoleGuard(models.RoleAdmin))
+	adminOnly := users.Group("/", middlewares.RoleGuard(models.RoleAdmin))
 	// GET /users - Get paginated list of users
 	adminOnly.Get("/", controller.getManyUsers)
 
