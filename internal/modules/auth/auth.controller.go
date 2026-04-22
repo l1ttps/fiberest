@@ -2,13 +2,15 @@ package auth
 
 import (
 	"errors"
+	"time"
+
+	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
+
 	"fiberest/internal/common/validators"
 	"fiberest/internal/middlewares"
 	"fiberest/internal/modules/auth/dto"
 	"fiberest/pkg/http_error"
-	"time"
-
-	"github.com/gofiber/fiber/v3"
 )
 
 // Controller handles authentication-related requests
@@ -45,6 +47,9 @@ func RegisterRoutes(app *fiber.App, controller *Controller) {
 
 	// GET /auth/sessions - Get many sessions for a user
 	auth.Get("/sessions", controller.getSessions)
+
+	// DELETE /auth/sessions/:id - Revoke a session by ID
+	auth.Delete("/sessions/:id", controller.revokeSession)
 }
 
 // initAdmin handles POST /auth/init request
@@ -300,5 +305,52 @@ func (c *Controller) getSessions(ctx fiber.Ctx) error {
 		Page:        req.Page,
 		HasNextPage: hasNextPage,
 		Total:       total,
+	})
+}
+
+// revokeSession handles DELETE /auth/sessions/:id request
+// @Summary Revoke a session by ID
+// @Description Deletes a specific session for the authenticated user. The session must belong to the current user.
+// @Tags Auth
+// @Produce json
+// @Param id path string true "Session ID"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} http_error.ErrorResponse
+// @Failure 401 {object} http_error.ErrorResponse
+// @Router /auth/sessions/{id} [delete]
+func (c *Controller) revokeSession(ctx fiber.Ctx) error {
+	userID, ok := ctx.Locals("user_id").(string)
+	if !ok || userID == "" {
+		return http_error.Unauthorized(ctx, "User not authenticated")
+	}
+
+	sessionID := ctx.Params("id")
+	if sessionID == "" {
+		return http_error.BadRequest(ctx, "Session ID is required")
+	}
+
+	sessionUUID, err := uuid.Parse(sessionID)
+	if err != nil {
+		return http_error.BadRequest(ctx, "Invalid session ID format")
+	}
+
+	session, err := c.service.FindSessionByID(ctx.Context(), sessionUUID)
+	if err != nil {
+		if errors.Is(err, ErrSessionNotFound) {
+			return http_error.BadRequest(ctx, "Session not found")
+		}
+		return http_error.InternalServerError(ctx, err.Error())
+	}
+
+	if session.UserID.String() != userID {
+		return http_error.BadRequest(ctx, "Session does not belong to user")
+	}
+
+	if err := c.service.DeleteSessionByID(ctx.Context(), sessionUUID); err != nil {
+		return http_error.InternalServerError(ctx, err.Error())
+	}
+
+	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "Session revoked successfully",
 	})
 }

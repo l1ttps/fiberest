@@ -403,6 +403,36 @@ paths:
       summary: Get all sessions for current user
       tags:
       - Auth
+  /auth/sessions/{id}:
+    delete:
+      description: Deletes a specific session for the authenticated user. The session
+        must belong to the current user.
+      parameters:
+      - description: Session ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+      summary: Revoke a session by ID
+      tags:
+      - Auth
   /health-check:
     get:
       consumes:

@@ -39,9 +39,11 @@ type AuthService interface {
 	// Session management
 	CreateSession(ctx context.Context, userID uuid.UUID, ipAddress, userAgent string, rememberMe bool) (*models.Session, error)
 	FindSessionBySessionId(ctx context.Context, sessionToken string) (*models.Session, error)
+	FindSessionByID(ctx context.Context, sessionID uuid.UUID) (*models.Session, error)
 	FindValidSession(ctx context.Context, sessionToken string) (*models.Session, error)
 	FindSessionsByUserID(ctx context.Context, userID string, limit, page int) ([]models.Session, int64, error)
 	DeleteSession(ctx context.Context, sessionToken string) error
+	DeleteSessionByID(ctx context.Context, sessionID uuid.UUID) error
 	UpdateExpiresSession(ctx context.Context, session *models.Session) error
 }
 
@@ -225,6 +227,26 @@ func (s *service) FindValidSession(ctx context.Context, sessionToken string) (*m
 // DeleteSession removes a session by its token
 func (s *service) DeleteSession(ctx context.Context, sessionToken string) error {
 	if err := s.getDB(ctx).Where("session_token = ?", sessionToken).Delete(&models.Session{}).Error; err != nil {
+		return fmt.Errorf("failed to delete session: %w", err)
+	}
+	return nil
+}
+
+// FindSessionByID finds a session by its primary key ID
+func (s *service) FindSessionByID(ctx context.Context, sessionID uuid.UUID) (*models.Session, error) {
+	var session models.Session
+	if err := s.getDB(ctx).Where("id = ?", sessionID).First(&session).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrSessionNotFound
+		}
+		return nil, fmt.Errorf("failed to find session: %w", err)
+	}
+	return &session, nil
+}
+
+// DeleteSessionByID removes a session by its primary key ID
+func (s *service) DeleteSessionByID(ctx context.Context, sessionID uuid.UUID) error {
+	if err := s.getDB(ctx).Where("id = ?", sessionID).Delete(&models.Session{}).Error; err != nil {
 		return fmt.Errorf("failed to delete session: %w", err)
 	}
 	return nil
