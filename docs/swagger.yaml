@@ -1,5 +1,16 @@
 basePath: /
 definitions:
+  dto.BanUserRequest:
+    properties:
+      reason:
+        maxLength: 500
+        minLength: 1
+        type: string
+      until:
+        type: string
+    required:
+    - reason
+    type: object
   dto.ChangePasswordRequest:
     properties:
       currentPassword:
@@ -164,6 +175,10 @@ definitions:
     type: object
   dto.UserResponse:
     properties:
+      banReason:
+        type: string
+      banUntil:
+        type: string
       email:
         type: string
       id:
@@ -224,6 +239,13 @@ definitions:
     type: object
   models.User:
     properties:
+      banReason:
+        description: BanReason is the reason why the user was banned
+        type: string
+      banUntil:
+        description: BanUntil is the time when the ban expires. If null, the ban is
+          permanent.
+        type: string
       createdAt:
         description: |-
           CreatedAt tracks when the record was created
@@ -400,12 +422,14 @@ paths:
       description: Retrieves a paginated list of sessions for the currently authenticated
         user.
       parameters:
-      - in: query
+      - example: 10
+        in: query
         maximum: 100
         minimum: 1
         name: limit
         type: integer
-      - in: query
+      - example: 1
+        in: query
         minimum: 1
         name: page
         type: integer
@@ -637,6 +661,44 @@ paths:
       summary: Update user by ID
       tags:
       - Admin
+  /users/{id}/ban:
+    post:
+      consumes:
+      - application/json
+      description: Bans a user with a reason and an optional expiration date. Only
+        admins can perform this action.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Ban details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.BanUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User banned successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+      summary: Ban a user
+      tags:
+      - Admin
   /users/me:
     patch:
       consumes:
@@ -708,6 +770,37 @@ paths:
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
       summary: Set password for a user
+      tags:
+      - Admin
+  /users/un-ban/{id}:
+    post:
+      consumes:
+      - application/json
+      description: Lifts the ban from a user. Only admins can perform this action.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User unbanned successfully
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+      summary: Unban a user
       tags:
       - Admin
 schemes:

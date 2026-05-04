@@ -24,6 +24,7 @@ var (
 	ErrInvalidCredential = errors.New("invalid email or password")
 	ErrSessionNotFound   = errors.New("session not found")
 	ErrWrongPassword     = errors.New("current password is incorrect")
+	ErrAccountBanned     = errors.New("account is banned")
 )
 
 // AuthService defines the business logic for authentication
@@ -261,6 +262,11 @@ func (s *service) Login(ctx context.Context, req dto.LoginRequest, ipAddress, us
 			return nil, ErrInvalidCredential
 		}
 		return nil, err
+	}
+
+	// Check if user is banned
+	if user.BanUntil != nil && time.Now().Before(*user.BanUntil) {
+		return nil, fmt.Errorf("%w: %s", ErrAccountBanned, user.BanReason)
 	}
 
 	// Find the user's EMAIL account

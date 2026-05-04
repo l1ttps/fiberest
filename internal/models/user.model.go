@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 // UserRole defines the role of a user in the system
 type UserRole string
 
@@ -24,6 +26,12 @@ type User struct {
 
 	// Role determines user permissions (ADMIN or USER)
 	Role UserRole `gorm:"not null;default:'USER'" json:"role"`
+
+	// BanReason is the reason why the user was banned
+	BanReason string `gorm:"size:500" json:"banReason"`
+
+	// BanUntil is the time when the ban expires. If null, the ban is permanent.
+	BanUntil *time.Time `gorm:"index" json:"banUntil"`
 }
 
 // TableName specifies the database table name for User model

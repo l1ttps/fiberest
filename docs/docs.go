@@ -214,12 +214,14 @@ const docTemplate = `{
                         "maximum": 100,
                         "minimum": 1,
                         "type": "integer",
+                        "example": 10,
                         "name": "limit",
                         "in": "query"
                     },
                     {
                         "minimum": 1,
                         "type": "integer",
+                        "example": 1,
                         "name": "page",
                         "in": "query"
                     },
@@ -515,6 +517,53 @@ const docTemplate = `{
                 }
             }
         },
+        "/users/un-ban/{id}": {
+            "post": {
+                "description": "Lifts the ban from a user. Only admins can perform this action.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Unban a user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User unbanned successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http_error.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http_error.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/users/{id}": {
             "get": {
                 "description": "Retrieves complete detailed information about a specific user using their unique identifier. Returns a 404 Not Found error if no user exists with the provided ID.",
@@ -654,9 +703,81 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/users/{id}/ban": {
+            "post": {
+                "description": "Bans a user with a reason and an optional expiration date. Only admins can perform this action.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Admin"
+                ],
+                "summary": "Ban a user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Ban details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.BanUserRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User banned successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/http_error.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/http_error.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "dto.BanUserRequest": {
+            "type": "object",
+            "required": [
+                "reason"
+            ],
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "minLength": 1
+                },
+                "until": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.ChangePasswordRequest": {
             "type": "object",
             "required": [
@@ -898,6 +1019,12 @@ const docTemplate = `{
         "dto.UserResponse": {
             "type": "object",
             "properties": {
+                "banReason": {
+                    "type": "string"
+                },
+                "banUntil": {
+                    "type": "string"
+                },
                 "email": {
                     "type": "string"
                 },
@@ -975,6 +1102,14 @@ const docTemplate = `{
         "models.User": {
             "type": "object",
             "properties": {
+                "banReason": {
+                    "description": "BanReason is the reason why the user was banned",
+                    "type": "string"
+                },
+                "banUntil": {
+                    "description": "BanUntil is the time when the ban expires. If null, the ban is permanent.",
+                    "type": "string"
+                },
                 "createdAt": {
                     "description": "CreatedAt tracks when the record was created\nAutomatically set by GORM on create",
                     "type": "string"

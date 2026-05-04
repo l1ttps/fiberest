@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"fiberest/internal/models"
 	"fiberest/pkg/http_error"
@@ -79,6 +80,11 @@ func AuthGuard(authService AuthService) fiber.Handler {
 			// Delete expired session
 			_ = authService.DeleteSession(c.Context(), sessionToken)
 			return http_error.Unauthorized(c, "Session expired")
+		}
+
+		// Check if user is banned
+		if session.User.BanUntil != nil && time.Now().Before(*session.User.BanUntil) {
+			return http_error.Forbidden(c, fmt.Sprintf("Your account is banned until %s. Reason: %s", session.User.BanUntil.Format(time.RFC3339), session.User.BanReason))
 		}
 
 		// Store user info in context for downstream handlers

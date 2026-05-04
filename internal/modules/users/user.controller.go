@@ -7,6 +7,7 @@ import (
 	"fiberest/internal/models"
 	"fiberest/internal/modules/users/dto"
 	"fiberest/pkg/http_error"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
 )
@@ -36,6 +37,9 @@ func UserRoutes(app *fiber.App, controller *Controller) {
 	adminOnly.Get("/:id", controller.getUserByID)
 
 	adminOnly.Put("/:id", controller.updateUserByID)
+
+	adminOnly.Post("/:id/ban", controller.banUser)
+	adminOnly.Post("/un-ban/:id", controller.unbanUser)
 
 	adminOnly.Delete("/:id", controller.deleteUserByID)
 
@@ -225,6 +229,94 @@ func (c *Controller) createUser(ctx fiber.Ctx) error {
 
 	return ctx.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"message": "User created successfully",
+	})
+}
+
+// banUser handles POST /users/:id/ban request
+// @Summary Ban a user
+// @Description Bans a user with a reason and an optional expiration date. Only admins can perform this action.
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID"
+// @Param request body dto.BanUserRequest true "Ban details"
+// @Success 200 {object} map[string]string "User banned successfully"
+// @Failure 400 {object} http_error.ErrorResponse
+// @Failure 404 {object} http_error.ErrorResponse
+// @Router /users/{id}/ban [post]
+func (c *Controller) banUser(ctx fiber.Ctx) error {
+	// Define a struct to hold the ID parameter
+	type idParams struct {
+		ID string `param:"id" validate:"required"`
+	}
+
+	var params idParams
+	if err := validators.GetParam(ctx, &params); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
+
+	// Parse request body
+	var req dto.BanUserRequest
+	if err := validators.GetBody(ctx, &req); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
+
+	var until *time.Time
+	if req.Until != "" {
+		t, err := time.Parse(time.RFC3339, req.Until)
+		if err != nil {
+			return http_error.BadRequest(ctx, "Invalid date format for 'until'. Use RFC3339 (e.g., 2026-12-31T23:59:59Z)")
+		}
+		until = &t
+	}
+
+	// Call service to ban user
+	err := c.service.BanUser(ctx.Context(), params.ID, req.Reason, until)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return http_error.NotFound(ctx, err.Error())
+		}
+		return http_error.InternalServerError(ctx, err.Error())
+	}
+
+	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "User banned successfully",
+	})
+}
+
+// unbanUser handles POST /users/un-ban/:id request
+// @Summary Unban a user
+// @Description Lifts the ban from a user. Only admins can perform this action.
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Param id path string true "User ID"
+// @Success 200 {object} map[string]string "User unbanned successfully"
+// @Failure 400 {object} http_error.ErrorResponse
+// @Failure 404 {object} http_error.ErrorResponse
+// @Router /users/un-ban/{id} [post]
+func (c *Controller) unbanUser(ctx fiber.Ctx) error {
+	// Define a struct to hold the ID parameter
+	type idParams struct {
+		ID string `param:"id" validate:"required"`
+	}
+
+	var params idParams
+	if err := validators.GetParam(ctx, &params); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
+
+	// Call service to unban user
+	err := c.service.UnbanUser(ctx.Context(), params.ID)
+	if err != nil {
+		if errors.Is(err, ErrUserNotFound) {
+			return http_error.NotFound(ctx, err.Error())
+		}
+		return http_error.InternalServerError(ctx, err.Error())
+	}
+
+	return ctx.Status(fiber.StatusOK).JSON(fiber.Map{
+		"message": "User unbanned successfully",
 	})
 }
 

@@ -3,8 +3,8 @@ package types
 // GetManyRequest is a common pagination request structure
 // that can be reused for any get many API.
 type GetManyRequest struct {
-	Limit  int    `query:"limit" validate:"min=1,max=100"`
-	Page   int    `query:"page" validate:"min=1"`
+	Limit  int    `query:"limit" validate:"min=1,max=100" example:"10"`
+	Page   int    `query:"page" validate:"min=1" example:"1"`
 	Search string `query:"search" validate:"omitempty,max=100"`
 }
 

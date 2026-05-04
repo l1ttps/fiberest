@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"fiberest/internal/common/pagination"
 	"fiberest/internal/common/types"
@@ -32,6 +33,8 @@ type UserService interface {
 	UpdateMyProfile(ctx context.Context, userID string, req dto.UpdateMyProfileRequest) (*models.User, error)
 	SetPassword(ctx context.Context, userID string, password string) error
 	DeleteUser(ctx context.Context, id string) error
+	BanUser(ctx context.Context, id string, reason string, until *time.Time) error
+	UnbanUser(ctx context.Context, id string) error
 	GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest) (*types.GetManyResponse[dto.UserResponse], error)
 }
 
@@ -196,10 +199,12 @@ func (s *service) GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest)
 	userResponses := make([]dto.UserResponse, len(users))
 	for i, user := range users {
 		userResponses[i] = dto.UserResponse{
-			ID:    user.ID.String(),
-			Email: user.Email,
-			Name:  user.Name,
-			Role:  string(user.Role),
+			ID:        user.ID.String(),
+			Email:     user.Email,
+			Name:      user.Name,
+			Role:      string(user.Role),
+			BanReason: user.BanReason,
+			BanUntil:  user.BanUntil,
 		}
 	}
 
@@ -283,6 +288,46 @@ func (s *service) DeleteUser(ctx context.Context, id string) error {
 	// Delete the user
 	if err := s.getDB(ctx).Delete(&models.User{}, id).Error; err != nil {
 		return fmt.Errorf("failed to delete user: %w", err)
+	}
+
+	return nil
+}
+
+// BanUser bans a user by ID with a reason and optional expiration time
+func (s *service) BanUser(ctx context.Context, id string, reason string, until *time.Time) error {
+	// Find existing user
+	user, err := s.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Update ban fields
+	user.BanReason = reason
+	user.BanUntil = until
+
+	// Save changes
+	if err := s.getDB(ctx).Save(user).Error; err != nil {
+		return fmt.Errorf("failed to ban user: %w", err)
+	}
+
+	return nil
+}
+
+// UnbanUser lifts the ban from a user
+func (s *service) UnbanUser(ctx context.Context, id string) error {
+	// Find existing user
+	user, err := s.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Clear ban fields
+	user.BanReason = ""
+	user.BanUntil = nil
+
+	// Save changes
+	if err := s.getDB(ctx).Save(user).Error; err != nil {
+		return fmt.Errorf("failed to unban user: %w", err)
 	}
 
 	return nil

@@ -1,13 +1,18 @@
 package dto
 
-import "fiberest/internal/common/types"
+import (
+	"fiberest/internal/common/types"
+	"time"
+)
 
 // UserResponse represents a user in the response (without sensitive data like password)
 type UserResponse struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
-	Role  string `json:"role"`
+	ID        string     `json:"id"`
+	Email     string     `json:"email"`
+	Name      string     `json:"name"`
+	Role      string     `json:"role"`
+	BanReason string     `json:"banReason"`
+	BanUntil  *time.Time `json:"banUntil"`
 }
 
 // GetManyUsersRequest extends the common GetManyRequest for user-specific queries.
@@ -50,4 +55,10 @@ type CreateUserRequest struct {
 // SetPasswordRequest defines the payload for setting a user's password
 type SetPasswordRequest struct {
 	Password string `json:"password" validate:"required,min=8,max=72"`
+}
+
+// BanUserRequest defines the payload for banning a user
+type BanUserRequest struct {
+	Reason string `json:"reason" validate:"required,min=1,max=500"`
+	Until  string `json:"until" validate:"omitempty"`
 }
