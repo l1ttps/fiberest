@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 
+	"fiberest/internal/common/pagination"
 	"fiberest/internal/common/types"
 	"fiberest/internal/database"
 	"fiberest/internal/models"
@@ -104,9 +104,6 @@ func (s *service) FindByID(ctx context.Context, id string) (*models.User, error)
 // It returns a GetManyResponse containing users, pagination info and total count.
 // Supports optional filtering by role and search query (name or email).
 func (s *service) GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest) (*types.GetManyResponse[dto.UserResponse], error) {
-	// Calculate offset
-	offset := (req.Page - 1) * req.Limit
-
 	// Build base query with optional filters
 	query := s.getDB(ctx).Model(&models.User{})
 
@@ -131,7 +128,7 @@ func (s *service) GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest)
 	var users []models.User
 	if err := query.
 		Limit(req.Limit).
-		Offset(offset).
+		Offset((req.Page - 1) * req.Limit).
 		Order("created_at DESC").
 		Find(&users).Error; err != nil {
 		return nil, fmt.Errorf("failed to fetch users: %w", err)
@@ -148,20 +145,10 @@ func (s *service) GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest)
 		}
 	}
 
-	// Calculate hasNextPage
-	totalPages := int(math.Ceil(float64(total) / float64(req.Limit)))
-	hasNextPage := req.Page < totalPages
+	// Build response using helper function
+	response := pagination.GetManyResponse(req.GetManyRequest, userResponses, total)
 
-	// Build response
-	response := &types.GetManyResponse[dto.UserResponse]{
-		Data:        userResponses,
-		Limit:       req.Limit,
-		Page:        req.Page,
-		HasNextPage: hasNextPage,
-		Total:       total,
-	}
-
-	return response, nil
+	return &response, nil
 }
 
 // UpdateMyProfile updates the current user's own profile information

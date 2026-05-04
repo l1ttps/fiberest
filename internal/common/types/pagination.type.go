@@ -15,5 +15,6 @@ type GetManyResponse[T any] struct {
 	Limit       int   `json:"limit"`
 	Page        int   `json:"page"`
 	HasNextPage bool  `json:"hasNextPage"`
+	PageCount   int   `json:"pageCount"`
 	Total       int64 `json:"total"`
 }
