@@ -22,3 +22,8 @@ tasks:
     deps: [docs]
     cmds:
       - go build -o bin/server cmd/server/main.go
+
+  test:
+    desc: Run all tests with race detector
+    cmds:
+      - go test ./... -race
