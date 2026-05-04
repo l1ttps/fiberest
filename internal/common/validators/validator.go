@@ -2,8 +2,13 @@
 package validators
 
 import (
-	"fiberest/pkg/http_error"
+	"errors"
+	"fmt"
+	"reflect"
+	"strconv"
 	"strings"
+
+	"fiberest/pkg/http_error"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v3"
@@ -78,6 +83,99 @@ func ParseAndValidate(ctx fiber.Ctx, dest interface{}) error {
 
 	// Validate parsed data
 	return ValidateStruct(dest)
+}
+
+// GetBody binds request body and validates the struct
+func GetBody(ctx fiber.Ctx, dest interface{}) error {
+	return ParseAndValidate(ctx, dest)
+}
+
+// GetQuery binds query parameters and validates the struct
+func GetQuery(ctx fiber.Ctx, dest interface{}) error {
+	if err := ctx.Bind().Query(dest); err != nil {
+		return err
+	}
+	return ValidateStruct(dest)
+}
+
+// GetParam binds URL path parameters and validates the struct
+// Uses struct tags with `param:"key"` to map path parameters to struct fields
+func GetParam(ctx fiber.Ctx, dest interface{}) error {
+	val := reflect.ValueOf(dest)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+	
+	if val.Kind() != reflect.Struct {
+		return errors.New("dest must be a struct or struct pointer")
+	}
+	
+	typ := val.Type()
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		paramKey := field.Tag.Get("param")
+		if paramKey == "" {
+			// Use field name as param key if tag not specified
+			paramKey = field.Name
+		}
+		
+		paramValue := ctx.Params(paramKey)
+		if paramValue == "" {
+			// Check if field is required via validate tag
+			if validateTag := field.Tag.Get("validate"); strings.Contains(validateTag, "required") {
+				return fmt.Errorf("%s is required", paramKey)
+			}
+			// Continue if not required
+			continue
+		}
+		
+		// Set the field value
+		if err := setFieldValue(val.Field(i), paramValue, field.Type); err != nil {
+			return fmt.Errorf("failed to set param %s: %w", paramKey, err)
+		}
+	}
+	
+	return ValidateStruct(dest)
+}
+
+// setFieldValue sets a reflect.Value from a string based on the field's type
+func setFieldValue(field reflect.Value, value string, typ reflect.Type) error {
+	if !field.CanSet() {
+		return fmt.Errorf("cannot set field")
+	}
+	
+	switch typ.Kind() {
+	case reflect.String:
+		field.SetString(value)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		intVal, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			return err
+		}
+		field.SetInt(intVal)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		uintVal, err := strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			return err
+		}
+		field.SetUint(uintVal)
+	case reflect.Bool:
+		boolVal, err := strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+		field.SetBool(boolVal)
+	case reflect.Float32, reflect.Float64:
+		floatVal, err := strconv.ParseFloat(value, typ.Bits())
+		if err != nil {
+			return err
+		}
+		field.SetFloat(floatVal)
+	default:
+		return fmt.Errorf("unsupported type: %s", typ.Kind())
+	}
+	
+	return nil
 }
 
 func ResponseError(ctx fiber.Ctx, err error) error {

@@ -261,8 +261,8 @@ func (c *Controller) getSessions(ctx fiber.Ctx) error {
 
 	var req dto.GetManySessionsRequest
 
-	// Parse query parameters
-	if err := ctx.Bind().Query(&req); err != nil {
+	// Parse and validate query parameters
+	if err := validators.GetQuery(ctx, &req); err != nil {
 		return validators.ResponseError(ctx, err)
 	}
 
@@ -272,11 +272,6 @@ func (c *Controller) getSessions(ctx fiber.Ctx) error {
 	}
 	if req.Page <= 0 {
 		req.Page = 1
-	}
-
-	// Validate parsed data
-	if err := validators.ValidateStruct(&req); err != nil {
-		return validators.ResponseError(ctx, err)
 	}
 
 	sessions, total, err := c.service.FindSessionsByUserID(ctx.Context(), userID, req.Limit, req.Page)

@@ -39,6 +39,14 @@ type UpdateUserRequest struct {
 	Role  string `json:"role" validate:"omitempty,oneof=ADMIN USER"`
 }
 
+// CreateUserRequest defines the payload for creating a new user (admin only)
+type CreateUserRequest struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required,min=8,max=72"`
+	Name     string `json:"name" validate:"required,min=1,max=255"`
+	Role     string `json:"role" validate:"omitempty,oneof=ADMIN USER"`
+}
+
 // SetPasswordRequest defines the payload for setting a user's password
 type SetPasswordRequest struct {
 	Password string `json:"password" validate:"required,min=8,max=72"`

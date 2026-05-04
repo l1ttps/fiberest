@@ -26,27 +26,22 @@ func NewController(app *fiber.App, service UserService) *Controller {
 // UserRoutes is invoked by fx to register user routes
 func UserRoutes(app *fiber.App, controller *Controller) {
 
-	// Create a route group for /users (admin only)
 	users := app.Group("/users")
 
-	// PATCH /users/me - Update own information (authenticated users only)
 	users.Patch("/me", controller.patchMe)
 
 	adminOnly := users.Group("/", middlewares.RoleGuard(models.RoleAdmin))
-	// GET /users - Get paginated list of users
 	adminOnly.Get("/", controller.getManyUsers)
 
-	// GET /users/:id - Get user by ID
 	adminOnly.Get("/:id", controller.getUserByID)
 
-	// PUT /users/:id - Update user by ID
 	adminOnly.Put("/:id", controller.updateUserByID)
 
-	// DELETE /users/:id - Delete user by ID
 	adminOnly.Delete("/:id", controller.deleteUserByID)
 
-	// POST /users/set-password/:id - Set password for user
 	adminOnly.Post("/set-password/:id", controller.setPassword)
+
+	adminOnly.Post("/", controller.createUser)
 }
 
 // getManyUsers handles GET /users request
@@ -65,21 +60,8 @@ func UserRoutes(app *fiber.App, controller *Controller) {
 func (c *Controller) getManyUsers(ctx fiber.Ctx) error {
 	var req dto.GetManyUsersRequest
 
-	// Parse query parameters
-	if err := ctx.Bind().Query(&req); err != nil {
-		return validators.ResponseError(ctx, err)
-	}
-
-	// Set default values if not provided
-	if req.Limit <= 0 {
-		req.Limit = 10
-	}
-	if req.Page <= 0 {
-		req.Page = 1
-	}
-
-	// Validate parsed data
-	if err := validators.ValidateStruct(&req); err != nil {
+	// Parse and validate query parameters
+	if err := validators.GetQuery(ctx, &req); err != nil {
 		return validators.ResponseError(ctx, err)
 	}
 
@@ -105,14 +87,18 @@ func (c *Controller) getManyUsers(ctx fiber.Ctx) error {
 // @Failure 404 {object} http_error.ErrorResponse
 // @Router /users/{id} [get]
 func (c *Controller) getUserByID(ctx fiber.Ctx) error {
-	// Get user ID from path parameter
-	userID := ctx.Params("id")
-	if userID == "" {
-		return http_error.BadRequest(ctx, "user ID is required")
+	// Define a struct to hold the ID parameter
+	type idParams struct {
+		ID string `param:"id" validate:"required"`
+	}
+
+	var params idParams
+	if err := validators.GetParam(ctx, &params); err != nil {
+		return validators.ResponseError(ctx, err)
 	}
 
 	// Call service to find user
-	user, err := c.service.FindByID(ctx.Context(), userID)
+	user, err := c.service.FindByID(ctx.Context(), params.ID)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return http_error.NotFound(ctx, err.Error())
@@ -138,10 +124,14 @@ func (c *Controller) getUserByID(ctx fiber.Ctx) error {
 // @Failure 409 {object} http_error.ErrorResponse
 // @Router /users/{id} [put]
 func (c *Controller) updateUserByID(ctx fiber.Ctx) error {
-	// Get user ID from path parameter
-	userID := ctx.Params("id")
-	if userID == "" {
-		return http_error.BadRequest(ctx, "user ID is required")
+	// Define a struct to hold the ID parameter
+	type idParams struct {
+		ID string `param:"id" validate:"required"`
+	}
+
+	var params idParams
+	if err := validators.GetParam(ctx, &params); err != nil {
+		return validators.ResponseError(ctx, err)
 	}
 
 	// Parse request body
@@ -151,7 +141,7 @@ func (c *Controller) updateUserByID(ctx fiber.Ctx) error {
 	}
 
 	// Call service to update user
-	user, err := c.service.UpdateUser(ctx.Context(), userID, req)
+	user, err := c.service.UpdateUser(ctx.Context(), params.ID, req)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return http_error.NotFound(ctx, err.Error())
@@ -178,14 +168,18 @@ func (c *Controller) updateUserByID(ctx fiber.Ctx) error {
 // @Failure 404 {object} http_error.ErrorResponse
 // @Router /users/{id} [delete]
 func (c *Controller) deleteUserByID(ctx fiber.Ctx) error {
-	// Get user ID from path parameter
-	userID := ctx.Params("id")
-	if userID == "" {
-		return http_error.BadRequest(ctx, "user ID is required")
+	// Define a struct to hold the ID parameter
+	type idParams struct {
+		ID string `param:"id" validate:"required"`
+	}
+
+	var params idParams
+	if err := validators.GetParam(ctx, &params); err != nil {
+		return validators.ResponseError(ctx, err)
 	}
 
 	// Call service to delete user
-	err := c.service.DeleteUser(ctx.Context(), userID)
+	err := c.service.DeleteUser(ctx.Context(), params.ID)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return http_error.NotFound(ctx, err.Error())
@@ -195,6 +189,43 @@ func (c *Controller) deleteUserByID(ctx fiber.Ctx) error {
 
 	// Return success response (204 No Content)
 	return ctx.Status(fiber.StatusNoContent).SendString("")
+}
+
+// createUser handles POST /users request
+// @Summary Create a new user
+// @Description Creates a new user with email, password, name and role. Only admins can create users. Default role is USER.
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Param request body dto.CreateUserRequest true "User creation data"
+// @Success 201 {object} map[string]string "User created successfully"
+// @Failure 400 {object} http_error.ErrorResponse
+// @Failure 409 {object} http_error.ErrorResponse
+// @Router /users [post]
+func (c *Controller) createUser(ctx fiber.Ctx) error {
+	var req dto.CreateUserRequest
+	if err := validators.GetBody(ctx, &req); err != nil {
+		return validators.ResponseError(ctx, err)
+	}
+
+	// Set default role if not provided
+	role := models.RoleUser
+	if req.Role != "" {
+		role = models.UserRole(req.Role)
+	}
+
+	// Call service to create user
+	_, err := c.service.CreateUserWithPassword(ctx.Context(), req.Email, req.Password, req.Name, role)
+	if err != nil {
+		if errors.Is(err, ErrUserAlreadyExists) {
+			return http_error.Conflict(ctx, err.Error())
+		}
+		return http_error.InternalServerError(ctx, err.Error())
+	}
+
+	return ctx.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"message": "User created successfully",
+	})
 }
 
 // setPassword handles POST /users/set-password/:id request
@@ -210,10 +241,14 @@ func (c *Controller) deleteUserByID(ctx fiber.Ctx) error {
 // @Failure 404 {object} http_error.ErrorResponse
 // @Router /users/set-password/{id} [post]
 func (c *Controller) setPassword(ctx fiber.Ctx) error {
-	// Get user ID from path parameter
-	userID := ctx.Params("id")
-	if userID == "" {
-		return http_error.BadRequest(ctx, "user ID is required")
+	// Define a struct to hold the ID parameter
+	type idParams struct {
+		ID string `param:"id" validate:"required"`
+	}
+
+	var params idParams
+	if err := validators.GetParam(ctx, &params); err != nil {
+		return validators.ResponseError(ctx, err)
 	}
 
 	// Parse request body
@@ -223,7 +258,7 @@ func (c *Controller) setPassword(ctx fiber.Ctx) error {
 	}
 
 	// Call service to set password
-	err := c.service.SetPassword(ctx.Context(), userID, req.Password)
+	err := c.service.SetPassword(ctx.Context(), params.ID, req.Password)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
 			return http_error.NotFound(ctx, err.Error())
