@@ -15,6 +15,7 @@ import (
 // @host localhost:3278
 // @BasePath /
 // @schemes http
+// @contact.url https://github.com/l1ttps/fiberest
 
 func main() {
 	app := fx.New(

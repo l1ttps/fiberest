@@ -284,7 +284,8 @@ definitions:
     - RoleUser
 host: localhost:3278
 info:
-  contact: {}
+  contact:
+    url: https://github.com/l1ttps/fiberest
   description: Production-ready Go web framework built on Fiber, designed for enterprise
     applications with modular architecture, dependency injection, and batteries included.
   title: Fiberest API

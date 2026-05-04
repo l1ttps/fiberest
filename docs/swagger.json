@@ -6,7 +6,9 @@
     "info": {
         "description": "Production-ready Go web framework built on Fiber, designed for enterprise applications with modular architecture, dependency injection, and batteries included.",
         "title": "Fiberest API",
-        "contact": {},
+        "contact": {
+            "url": "https://github.com/l1ttps/fiberest"
+        },
         "version": "1.0.0"
     },
     "host": "localhost:3278",

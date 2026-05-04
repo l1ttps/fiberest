@@ -9,7 +9,9 @@ const docTemplate = `{
     "info": {
         "description": "{{escape .Description}}",
         "title": "{{.Title}}",
-        "contact": {},
+        "contact": {
+            "url": "https://github.com/l1ttps/fiberest"
+        },
         "version": "{{.Version}}"
     },
     "host": "{{.Host}}",
