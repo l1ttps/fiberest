@@ -102,9 +102,27 @@ Not from a shared location. Each module owns its DTOs.
 ## Validation Pattern
 
 Always use the validator:
+
+**Request Body:**
 ```go
 var req dto.RequestType
 if err := validators.ParseAndValidate(ctx, &req); err != nil {
+    return validators.ResponseError(ctx, err)
+}
+```
+
+**Query Parameters:**
+```go
+var query dto.QueryType
+if err := validators.GetQuery(ctx, &query); err != nil {
+    return validators.ResponseError(ctx, err)
+}
+```
+
+**Path Parameters:**
+```go
+var params dto.ParamType
+if err := validators.GetParam(ctx, &params); err != nil {
     return validators.ResponseError(ctx, err)
 }
 ```
