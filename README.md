@@ -32,6 +32,8 @@ The project is organized as follows:
 │   ├── configs     # Configuration management module (using Viper)
 │   ├── database    # Database connection management module (using GORM)
 │   ├── modules     # Contains business logic modules (e.g., users, health_check)
+│   │   ├── combine_module.go  # Aggregates all modules
+│   │   └── {module}/          # Individual modules
 │   └── server      # Fiber server configuration and initialization
 ├── pkg
 │   └── http_error  # Helper for handling HTTP errors
@@ -99,11 +101,15 @@ The project is organized as follows:
       task dev
       ```
 
+      Note: `task dev` runs `task docs` before building (via `.air.toml` pre_cmd).
+
     - **Normal execution:**
 
       ```bash
       task run
       ```
+
+      Note: `task run` depends on `docs` and runs it first.
 
 ## Usage
 
@@ -138,6 +144,8 @@ To create a new module:
     )
     ```
 
+    Note: Route registration function name varies (e.g., `UserRoutes` in users module).
+
 4.  **Register module:**
     Add your module to `internal/modules/combine_module.go`:
     ```go
@@ -149,9 +157,11 @@ To create a new module:
     )
     ```
 
+    **Critical**: Both steps (module file + combine_module.go) are required.
+
 ### Adding Routes
 
-Routes are registered in the controller's `RegisterRoutes` function:
+Routes are registered in the controller's route registration function:
 
 ```go
 func RegisterRoutes(app *fiber.App, controller *Controller) {
@@ -182,6 +192,8 @@ func NewController(service *Service) *Controller {
 ```
 
 FX automatically handles the lifecycle and injection of all provided components.
+
+**Critical DI Chain**: `server.Module` depends on `auth.AuthService`. The auth module's `AutoMigrate` runs automatically on startup.
 
 ### Working with Database
 
@@ -289,13 +301,21 @@ Generate updated documentation:
 task docs
 ```
 
+**Note**: Swagger docs are auto-generated before every build in dev mode (`.air.toml` pre_cmd).
+
 ## Useful Commands
 
-- `task build`: Builds the application into an executable file in the `bin` directory.
-- `task docs`: Generates API documentation in `/docs` folder.
+- `task dev`: Hot reload development mode (runs `task docs` → build)
+- `task run`: Build docs → run binary
+- `task build`: Build docs → compile binary (`./bin/server`)
+- `task docs`: Generate Swagger docs (`swag init -g cmd/server/main.go -o docs`)
 
 ## API Documentation
 
-The project uses Scalar for API documentation. After starting the server, you can access the `/docs` path to see the details.
+The project uses Scalar (not Swagger UI) for API documentation. After starting the server, access docs at:
 
-Example: `http://localhost:3278/docs`
+```
+http://localhost:3278/docs
+```
+
+Port is configurable via `.env` (default: 3278).

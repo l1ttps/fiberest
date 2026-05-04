@@ -1,197 +1,107 @@
-# AGENTS.md - Fiberest Project Guidelines
+# AGENTS.md - Fiberest Quick Reference
 
-> **Project**: Fiberest - Go Fiber Boilerplate with Dependency Injection
-> **Language**: Go (Golang)
-> **Framework**: Fiber v3, Uber FX (DI), GORM, Viper
+Critical, non-obvious facts for working in this repo. Only includes things an agent would likely miss or get wrong.
 
 ---
 
-## 1. Architecture Overview
+## Build & Dev Workflow
 
-This project follows **Modular Architecture** combined with **Dependency Injection** using Uber FX.
+### Hot reload (task dev) runs `task docs` BEFORE build
+`.air.toml` has `pre_cmd = ["task docs"]` — Swagger must be generated before every build in dev mode. If you skip this, the build fails because `docs/docs.go` is imported by `fiber.go`.
 
+### Build order: docs → binary
+- `task run` depends on `docs` (via Taskfile)
+- `task build` depends on `docs` (via Taskfile)
+- `task dev` uses Air with `pre_cmd = ["task docs"]`
+
+Swagger generation command (what Air runs):
+```bash
+swag init -g cmd/server/main.go -o docs
 ```
-┌─────────────────────────────────────────────────────────┐
-│                        main.go                          │
-│              (Initialize FX container)                  │
-└────────────────────┬────────────────────────────────────┘
-                     │
-    ┌────────────────┼────────────────┐
-    │                │                │
-┌───▼────┐    ┌──────▼──────┐   ┌─────▼──────┐
-│ Config │    │  Database   │   │   Server   │
-│ Module │    │   Module    │   │   Module   │
-└───┬────┘    └──────┬──────┘   └─────┬──────┘
-    │                │                │
-    └────────────────┴────────────────┘
-                     │
-            ┌────────▼─────────┐
-            │  Modules Module  │
-            │  (Combine all)   │
-            └────────┬─────────┘
-                     │
-        ┌────────────┼────────────┐
-        │            │            │
-   ┌────▼────┐  ┌────▼────┐  ┌────▼────┐
-   │ Module  │  │ Module  │  │  ...    │
-   │    A    │  │    B    │  │ Modules │
-   └─────────┘  └─────────┘  └─────────┘
-```
+
+### Go version
+`go 1.25.0` — newer than standard. Required by `golang.org/x/crypto` and other deps.
 
 ---
 
-## 2. Project Structure
+## Module Registration (Two Steps)
 
-```
-.
-├── cmd/
-│   ├── server/
-│   │   └── main.go              # Entry point - initialize FX container
-│   └── swag/
-│       └── docs/                # Swagger generated docs
-├── internal/
-│   ├── common/                  # Shared components
-│   │   ├── models/              # Base models (BaseModel with UUID, timestamps)
-│   │   ├── types/               # Shared types, constants
-│   │   └── validators/          # Request validation utilities
-│   ├── configs/                 # Configuration management
-│   │   ├── config.module.go     # FX module
-│   │   └── config.service.go    # Config service using Viper
-│   ├── database/                # Database connection
-│   │   ├── database.module.go   # FX module
-│   │   └── database.service.go  # GORM service
-│   ├── modules/                 # Business modules
-│   │   ├── combine_module.go    # Aggregate all modules
-│   │   └── {module}/            # Each business module
-│   │       ├── dto/             # Data Transfer Objects
-│   │       ├── models/          # GORM models
-│   │       ├── {module}.module.go
-│   │       ├── {module}.controller.go
-│   │       └── {module}.service.go
-│   └── server/                  # HTTP server setup
-│       ├── fiber.go             # Fiber app & lifecycle
-│       └── module.go            # Server module
-├── pkg/                         # Public packages
-│   └── http_error/              # HTTP error handling
-└── docs/                        # Documentation
-```
+Creating a module requires BOTH:
+
+1. **Module file** in `internal/modules/{module}/` with `var Module = fx.Options(...)`
+2. **Registration** in `internal/modules/combine_module.go`:
+   ```go
+   import "fiberest/internal/modules/{module}"
+   
+   var Module = fx.Options(
+       {module}.Module,  // Add here
+   )
+   ```
+
+**Naming note**: `user.module.go` uses `UserRoutes` (not `RegisterRoutes`). Follow existing pattern in each module.
 
 ---
 
-## 3. Module Pattern
+## Server Depends on Auth (Critical DI Chain)
 
-Each module follows this pattern:
+`main.go` comment: `server.Module` depends on `auth.AuthService`.
 
-### 3.1 File Structure
+`server/fiber.go`:
+- `NewFiberApp(cfg *configs.Config, authService auth.AuthService)` — authService is injected
+- Global `app.Use(middlewares.AuthGuard(authService))` — applied to ALL routes
+- `auth.Module` has `AutoMigrate` for `Account` and `Session` models
 
-```
-internal/modules/{module_name}/
-├── {module}.module.go      # Module definition
-├── {module}.controller.go  # HTTP handlers
-├── {module}.service.go     # Business logic
-├── dto/                    # Request/Response structs
-└── models/                 # Database models (if any)
-```
-
-### 3.2 Module Definition (`{module}.module.go`)
-
-```go
-package {module_name}
-
-import "go.uber.org/fx"
-
-var Module = fx.Options(
-    fx.Provide(NewService),      // Provide service
-    fx.Provide(NewController),   // Provide controller
-    fx.Invoke(RegisterRoutes),   // Register routes
-)
-```
-
-### 3.3 Controller Pattern
-
-```go
-package {module_name}
-
-import "github.com/gofiber/fiber/v3"
-
-type Controller struct {
-    service *Service  // Inject service via DI
-}
-
-func NewController(app *fiber.App, service *Service) *Controller {
-    return &Controller{service: service}
-}
-
-func RegisterRoutes(app *fiber.App, controller *Controller) {
-    group := app.Group("/endpoint")
-    group.Post("/action", controller.handleAction)
-}
-
-func (c *Controller) handleAction(ctx fiber.Ctx) error {
-    // 1. Parse & validate request
-    // 2. Call service
-    // 3. Return response
-}
-```
-
-### 3.4 Service Pattern
-
-```go
-package {module_name}
-
-type Service struct {
-    dbService *database.DatabaseService  // Inject dependencies
-}
-
-func NewService(dbService *database.DatabaseService) *Service {
-    return &Service{dbService: dbService}
-}
-
-// Public methods use PascalCase
-func (s *Service) PublicMethod() error {
-    // Business logic
-}
-
-// Private helpers use camelCase
-func (s *Service) privateHelper() error {
-    // Helper logic
-}
-```
+**Consequence**: Auth module MUST be registered and its DB migrations must run before server starts. FX handles this via dependency graph.
 
 ---
 
-## 4. Coding Standards
+## Auth Module Auto-Migration
 
-### 4.1 Naming Conventions
-
-| Type | Convention | Example |
-|------|------------|---------|
-| Package | lowercase, no underscore | `users`, `orders` |
-| Exported | PascalCase | `UserService`, `CreateUser` |
-| Unexported | camelCase | `hashPassword`, `getDB` |
-| Constants | UPPER_SNAKE_CASE | `RoleAdmin`, `DefaultPort` |
-| Files | snake_case | `user.service.go` |
-| DTOs | Suffix with Request/Response | `CreateUserRequest` |
-
-### 4.2 Error Handling
-
+`internal/modules/auth/auth.module.go` includes:
 ```go
-// Always wrap errors with context
-if err != nil {
-    return nil, fmt.Errorf("failed to create user: %w", err)
-}
-
-// Check specific errors
-if err == gorm.ErrRecordNotFound {
-    return nil, fmt.Errorf("user not found")
-}
-
-// Return validation errors
-return http_error.BadRequest(ctx, "email already exists")
+fx.Invoke(func(db *database.DatabaseService) {
+    db.GetDB().AutoMigrate(&models.Account{}, &models.Session{})
+})
 ```
 
-### 4.3 Request Validation
+This runs automatically when the FX container starts. Don't add similar migrations elsewhere without checking if they belong in the module.
 
+---
+
+## Scalar (Not Swagger UI)
+
+Uses `yokeTH/gofiber-scalar/scalar/v3` — not standard Swagger UI.
+
+Route: `GET /docs/*` returns Scalar interface. Docs generated into `docs/` folder and embedded via `docs.SwaggerInfo.ReadDoc()`.
+
+---
+
+## Port Configuration
+
+- `example.env`: `PORT=3278`
+- `.env`: `PORT=3278`
+- `server/fiber.go`: reads from `cfg.GetString("PORT")`
+
+**Use**: Set in `.env` (create from `example.env`). Default is 3278.
+
+---
+
+## DTO Import Pattern
+
+Controllers import DTOs from their own module:
+```go
+package auth
+
+import "fiberest/internal/modules/auth/dto"
+```
+
+Not from a shared location. Each module owns its DTOs.
+
+---
+
+## Validation Pattern
+
+Always use the validator:
 ```go
 var req dto.RequestType
 if err := validators.ParseAndValidate(ctx, &req); err != nil {
@@ -199,154 +109,49 @@ if err := validators.ParseAndValidate(ctx, &req); err != nil {
 }
 ```
 
-### 4.4 Database Operations
+Located in `internal/common/validators/`. Returns proper HTTP 400 with field errors.
 
+---
+
+## Error Response Helper
+
+Use `http_error` package for consistent errors:
 ```go
-// Use transaction when multiple operations
-err := s.getDB().Transaction(func(tx *gorm.DB) error {
-    // operations...
-    return nil
-})
+import "fiberest/pkg/http_error"
 
-// Use context for cancellation
-ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-defer cancel()
+return http_error.BadRequest(ctx, "message")
+return http_error.NotFound(ctx, "message")
+return http_error.TooManyRequests(ctx, "message")
 ```
 
 ---
 
-## 5. Creating a New Module
+## What to Skip (Generic/Obvious)
 
-### Step 1: Create directory structure
+- Go naming conventions (PascalCase for exported, camelCase for unexported)
+- Basic Fiber route definitions
+- Standard GORM usage patterns
+- General DI concepts
+- Standard error wrapping with `%w`
+
+These are covered by standard Go/Fiber knowledge and don't need repeating here.
+
+---
+
+## Quick Commands
 
 ```bash
-mkdir -p internal/modules/{module_name}/{dto,models}
-touch internal/modules/{module_name}/{module_name}.module.go
-touch internal/modules/{module_name}/{module_name}.controller.go
-touch internal/modules/{module_name}/{module_name}.service.go
-```
-
-### Step 2: Implement module.go
-
-```go
-package {module_name}
-
-import "go.uber.org/fx"
-
-var Module = fx.Options(
-    fx.Provide(NewService),
-    fx.Provide(NewController),
-    fx.Invoke(RegisterRoutes),
-)
-```
-
-### Step 3: Register in combine_module.go
-
-```go
-import "fiberest/internal/modules/{module_name}"
-
-var Module = fx.Options(
-    // existing modules...
-    {module_name}.Module,
-)
+task dev      # Hot reload (runs docs → build)
+task run      # Build docs → run binary
+task build    # Build docs → compile binary (./bin/server)
+task docs     # Generate Swagger (swag init)
 ```
 
 ---
 
-## 6. Swagger Documentation
+## References (Keep Updated)
 
-All controller handlers must have Swagger annotations:
-
-```go
-// @Summary Short description
-// @Description Detailed description
-// @Tags {module_name}
-// @Accept json
-// @Produce json
-// @Param request body dto.Request true "Request description"
-// @Success 200 {object} dto.Response
-// @Failure 400 {object} http_error.ErrorResponse
-// @Router /path [method]
-func (c *Controller) handler(ctx fiber.Ctx) error {
-    // implementation
-}
-```
-
-### Regenerate Swagger
-
-```bash
-make swag
-# or
-task swag
-```
-
----
-
-## 7. Dependencies & Tools
-
-### Core Dependencies
-
-- `github.com/gofiber/fiber/v3` - Web framework
-- `go.uber.org/fx` - Dependency injection
-- `gorm.io/gorm` - ORM
-- `gorm.io/driver/postgres` - PostgreSQL driver
-- `github.com/spf13/viper` - Configuration management
-- `github.com/go-playground/validator/v10` - Validation
-
-### Available Commands
-
-```bash
-# Development (hot reload)
-make dev
-
-# Build
-make build
-
-# Run tests
-make test
-
-# Generate Swagger docs
-make swag
-
-# Clean build artifacts
-make clean
-```
-
----
-
-## 8. Environment Variables
-
-```bash
-# Server
-PORT=3278
-
-# Database
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=secret
-DB_NAME=fiberest
-DB_SSLMODE=disable
-```
-
----
-
-## 9. Key Principles
-
-1. **Single Responsibility**: Each module has one responsibility only
-2. **Dependency Injection**: Always use FX for dependency injection
-3. **Explicit Error Handling**: Never ignore errors, always wrap with context
-4. **Validation First**: Validate requests before business logic
-5. **No Business Logic in Controller**: Controller handles HTTP only
-6. **No HTTP in Service**: Service handles business logic only
-7. **DTO Pattern**: Always use DTOs for request/response
-8. **Security**: Hash passwords, don't expose sensitive data in JSON
-
----
-
-## 10. References
-
-- [Fiber Documentation](https://docs.gofiber.io/)
-- [Uber FX Documentation](https://uber-go.github.io/fx/)
-- [GORM Documentation](https://gorm.io/docs/)
-- [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
+- [Fiber v3 Docs](https://docs.gofiber.io/)
+- [Uber FX](https://uber-go.github.io/fx/)
+- [GORM](https://gorm.io/docs/)
+- [Go Validator](https://github.com/go-playground/validator)
