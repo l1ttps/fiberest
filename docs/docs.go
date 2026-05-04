@@ -944,12 +944,12 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "",
-	Host:             "",
-	BasePath:         "",
-	Schemes:          []string{},
-	Title:            "",
-	Description:      "",
+	Version:          "1.0.0",
+	Host:             "localhost:3278",
+	BasePath:         "/",
+	Schemes:          []string{"http"},
+	Title:            "Fiberest API",
+	Description:      "Production-ready Go web framework built on Fiber, designed for enterprise applications with modular architecture, dependency injection, and batteries included.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

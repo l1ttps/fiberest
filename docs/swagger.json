@@ -1,8 +1,16 @@
 {
+    "schemes": [
+        "http"
+    ],
     "swagger": "2.0",
     "info": {
-        "contact": {}
+        "description": "Production-ready Go web framework built on Fiber, designed for enterprise applications with modular architecture, dependency injection, and batteries included.",
+        "title": "Fiberest API",
+        "contact": {},
+        "version": "1.0.0"
     },
+    "host": "localhost:3278",
+    "basePath": "/",
     "paths": {
         "/auth/change-password": {
             "post": {

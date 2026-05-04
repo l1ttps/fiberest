@@ -1,3 +1,4 @@
+basePath: /
 definitions:
   dto.ChangePasswordRequest:
     properties:
@@ -237,8 +238,13 @@ definitions:
     x-enum-varnames:
     - RoleAdmin
     - RoleUser
+host: localhost:3278
 info:
   contact: {}
+  description: Production-ready Go web framework built on Fiber, designed for enterprise
+    applications with modular architecture, dependency injection, and batteries included.
+  title: Fiberest API
+  version: 1.0.0
 paths:
   /auth/change-password:
     post:
@@ -650,4 +656,6 @@ paths:
       summary: Set password for a user
       tags:
       - Admin
+schemes:
+- http
 swagger: "2.0"
