@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"fiberest/internal/common/constants"
-	"fiberest/internal/database"
 	"fiberest/internal/models"
 	"fiberest/internal/modules/auth/dto"
 
@@ -49,19 +48,14 @@ type AuthService interface {
 }
 
 type service struct {
-	dbService *database.DatabaseService
+	repo Repository
 }
 
 // NewService creates a new auth service instance
-func NewService(dbService *database.DatabaseService) AuthService {
+func NewService(repo Repository) AuthService {
 	return &service{
-		dbService: dbService,
+		repo: repo,
 	}
-}
-
-// getDB returns the GORM database instance with context
-func (s *service) getDB(ctx context.Context) *gorm.DB {
-	return s.dbService.GetDB().WithContext(ctx)
 }
 
 // hashPassword hashes a plain text password using bcrypt
@@ -80,35 +74,30 @@ func (s *service) VerifyPassword(hashedPassword string, plainPassword string) bo
 }
 
 // CreateAdmin creates a new admin user and returns response.
-// This function can only be called when no admin exists in the system.
 func (s *service) CreateAdmin(ctx context.Context, req dto.InitAdminRequest) (*dto.InitAdminResponse, error) {
-	// Check if any admin already exists in the system
-	var adminCount int64
-	if err := s.getDB(ctx).Model(&models.User{}).Where("role = ?", models.RoleAdmin).Count(&adminCount).Error; err != nil {
+	adminCount, err := s.repo.CountAdmins(ctx)
+	if err != nil {
 		return nil, fmt.Errorf("failed to check existing admin: %w", err)
 	}
 	if adminCount > 0 {
 		return nil, ErrAdminExists
 	}
 
-	// Hash the password
 	hashedPassword, err := s.hashPassword(req.Password)
 	if err != nil {
 		return nil, err
 	}
 
-	// Create the user
 	user := &models.User{
 		Email: req.Email,
 		Name:  "Admin",
 		Role:  models.RoleAdmin,
 	}
 
-	if err := s.getDB(ctx).Create(user).Error; err != nil {
+	if err := s.repo.CreateUser(ctx, user); err != nil {
 		return nil, fmt.Errorf("failed to create admin user: %w", err)
 	}
 
-	// Create the account for authentication
 	account := &models.Account{
 		UserID:    user.ID,
 		Type:      models.AccountTypeEmail,
@@ -116,11 +105,10 @@ func (s *service) CreateAdmin(ctx context.Context, req dto.InitAdminRequest) (*d
 		IsPrimary: true,
 	}
 
-	if err := s.getDB(ctx).Create(account).Error; err != nil {
+	if err := s.repo.CreateAccount(ctx, account); err != nil {
 		return nil, fmt.Errorf("failed to create admin account: %w", err)
 	}
 
-	// Build response
 	response := &dto.InitAdminResponse{
 		ID:    user.ID.String(),
 		Email: user.Email,
@@ -133,31 +121,31 @@ func (s *service) CreateAdmin(ctx context.Context, req dto.InitAdminRequest) (*d
 
 // FindByEmail finds a user by their email address
 func (s *service) FindByEmail(ctx context.Context, email string) (*models.User, error) {
-	var user models.User
-	if err := s.getDB(ctx).Where("email = ?", email).First(&user).Error; err != nil {
+	user, err := s.repo.FindUserByEmail(ctx, email)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound
 		}
 		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
-	return &user, nil
+	return user, nil
 }
 
 // FindByID finds a user by their ID
 func (s *service) FindByID(ctx context.Context, id string) (*models.User, error) {
-	var user models.User
-	if err := s.getDB(ctx).Where("id = ?", id).First(&user).Error; err != nil {
+	user, err := s.repo.FindUserByID(ctx, id)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrUserNotFound
 		}
 		return nil, fmt.Errorf("failed to find user: %w", err)
 	}
-	return &user, nil
+	return user, nil
 }
 
 // generateSessionToken creates a cryptographically secure random token
 func (s *service) generateSessionToken() (string, error) {
-	bytes := make([]byte, 32) // 256-bit token
+	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
 		return "", fmt.Errorf("failed to generate session token: %w", err)
 	}
@@ -171,13 +159,10 @@ func (s *service) CreateSession(ctx context.Context, userID uuid.UUID, ipAddress
 		return nil, err
 	}
 
-	// Determine expiration based on remember me flag
 	var expiresAt time.Time
 	if rememberMe {
-		// Extended session duration for "remember me" (7 days)
 		expiresAt = time.Now().Add(constants.SessionDuration)
 	} else {
-		// Standard session duration (1 day)
 		expiresAt = time.Now().Add(24 * time.Hour)
 	}
 
@@ -190,7 +175,7 @@ func (s *service) CreateSession(ctx context.Context, userID uuid.UUID, ipAddress
 		RememberMe:   rememberMe,
 	}
 
-	if err := s.getDB(ctx).Create(session).Error; err != nil {
+	if err := s.repo.CreateSession(ctx, session); err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
@@ -199,14 +184,14 @@ func (s *service) CreateSession(ctx context.Context, userID uuid.UUID, ipAddress
 
 // FindSessionBySessionId finds a session by its token
 func (s *service) FindSessionBySessionId(ctx context.Context, sessionToken string) (*models.Session, error) {
-	var session models.Session
-	if err := s.getDB(ctx).Preload("User").Where("session_token = ?", sessionToken).First(&session).Error; err != nil {
+	session, err := s.repo.FindSessionByToken(ctx, sessionToken)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrSessionNotFound
 		}
 		return nil, fmt.Errorf("failed to find session: %w", err)
 	}
-	return &session, nil
+	return session, nil
 }
 
 // FindValidSession finds a session by token and checks if it's still valid
@@ -217,7 +202,6 @@ func (s *service) FindValidSession(ctx context.Context, sessionToken string) (*m
 	}
 
 	if !session.IsValid() {
-		// Session expired, delete it
 		s.DeleteSession(ctx, sessionToken)
 		return nil, errors.New("session expired")
 	}
@@ -227,7 +211,7 @@ func (s *service) FindValidSession(ctx context.Context, sessionToken string) (*m
 
 // DeleteSession removes a session by its token
 func (s *service) DeleteSession(ctx context.Context, sessionToken string) error {
-	if err := s.getDB(ctx).Where("session_token = ?", sessionToken).Delete(&models.Session{}).Error; err != nil {
+	if err := s.repo.DeleteSessionByToken(ctx, sessionToken); err != nil {
 		return fmt.Errorf("failed to delete session: %w", err)
 	}
 	return nil
@@ -235,19 +219,19 @@ func (s *service) DeleteSession(ctx context.Context, sessionToken string) error 
 
 // FindSessionByID finds a session by its primary key ID
 func (s *service) FindSessionByID(ctx context.Context, sessionID uuid.UUID) (*models.Session, error) {
-	var session models.Session
-	if err := s.getDB(ctx).Where("id = ?", sessionID).First(&session).Error; err != nil {
+	session, err := s.repo.FindSessionByID(ctx, sessionID)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrSessionNotFound
 		}
 		return nil, fmt.Errorf("failed to find session: %w", err)
 	}
-	return &session, nil
+	return session, nil
 }
 
 // DeleteSessionByID removes a session by its primary key ID
 func (s *service) DeleteSessionByID(ctx context.Context, sessionID uuid.UUID) error {
-	if err := s.getDB(ctx).Where("id = ?", sessionID).Delete(&models.Session{}).Error; err != nil {
+	if err := s.repo.DeleteSessionByID(ctx, sessionID); err != nil {
 		return fmt.Errorf("failed to delete session: %w", err)
 	}
 	return nil
@@ -255,7 +239,6 @@ func (s *service) DeleteSessionByID(ctx context.Context, sessionID uuid.UUID) er
 
 // Login authenticates user and sets session cookie
 func (s *service) Login(ctx context.Context, req dto.LoginRequest, ipAddress, userAgent string) (*dto.LoginResponse, error) {
-	// Find user by email
 	user, err := s.FindByEmail(ctx, req.Email)
 	if err != nil {
 		if errors.Is(err, ErrUserNotFound) {
@@ -264,26 +247,22 @@ func (s *service) Login(ctx context.Context, req dto.LoginRequest, ipAddress, us
 		return nil, err
 	}
 
-	// Check if user is banned
 	if user.BanUntil != nil && time.Now().Before(*user.BanUntil) {
 		return nil, fmt.Errorf("%w: %s", ErrAccountBanned, user.BanReason)
 	}
 
-	// Find the user's EMAIL account
-	var account models.Account
-	if err := s.getDB(ctx).Where("user_id = ? AND type = ?", user.ID, models.AccountTypeEmail).First(&account).Error; err != nil {
+	account, err := s.repo.FindAccount(ctx, user.ID, models.AccountTypeEmail)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("account not found for user")
 		}
 		return nil, fmt.Errorf("failed to find account: %w", err)
 	}
 
-	// Verify password against account's hash
 	if !s.VerifyPassword(account.Password, req.Password) {
 		return nil, ErrInvalidCredential
 	}
 
-	// Create new session with remember me flag
 	session, err := s.CreateSession(ctx, user.ID, ipAddress, userAgent, req.Remember)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
@@ -303,8 +282,8 @@ func (s *service) Logout(ctx context.Context, sessionToken string) error {
 
 // ChangePassword changes the user's password after verifying the current password
 func (s *service) ChangePassword(ctx context.Context, userID uuid.UUID, req dto.ChangePasswordRequest) (*dto.ChangePasswordResponse, error) {
-	var account models.Account
-	if err := s.getDB(ctx).Where("user_id = ? AND type = ?", userID, models.AccountTypeEmail).First(&account).Error; err != nil {
+	account, err := s.repo.FindAccount(ctx, userID, models.AccountTypeEmail)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("account not found: %w", err)
 		}
@@ -320,7 +299,7 @@ func (s *service) ChangePassword(ctx context.Context, userID uuid.UUID, req dto.
 		return nil, err
 	}
 
-	if err := s.getDB(ctx).Model(&account).Update("password", hashedPassword).Error; err != nil {
+	if err := s.repo.UpdateAccountPassword(ctx, account, hashedPassword); err != nil {
 		return nil, fmt.Errorf("failed to update password: %w", err)
 	}
 
@@ -330,11 +309,6 @@ func (s *service) ChangePassword(ctx context.Context, userID uuid.UUID, req dto.
 }
 
 // UpdateExpiresSession extends the expiration of a remember-me session by 7 days
-// only when at least 24 hours have passed since the last update.
-// This creates a rolling window:
-// - Daily use → session never expires (each request extends by 7 days)
-// - No use for 7+ days → session expires naturally
-// - Maximum 1 DB update per day per session
 func (s *service) UpdateExpiresSession(ctx context.Context, session *models.Session) error {
 	if !session.RememberMe {
 		return nil
@@ -355,10 +329,10 @@ func (s *service) UpdateExpiresSession(ctx context.Context, session *models.Sess
 	session.ExpiresAt = newExpiresAt
 	session.UpdatedAt = now
 
-	if err := s.getDB(ctx).Model(session).Updates(map[string]interface{}{
+	if err := s.repo.UpdateSession(ctx, session, map[string]interface{}{
 		"expires_at": newExpiresAt,
 		"updated_at": now,
-	}).Error; err != nil {
+	}); err != nil {
 		return fmt.Errorf("failed to update session expiration: %w", err)
 	}
 
@@ -367,25 +341,10 @@ func (s *service) UpdateExpiresSession(ctx context.Context, session *models.Sess
 
 // FindSessionsByUserID retrieves sessions for a specific user with pagination
 func (s *service) FindSessionsByUserID(ctx context.Context, userID string, limit, page int) ([]models.Session, int64, error) {
-	var sessions []models.Session
-	var total int64
-
-	// Get total count
-	if err := s.getDB(ctx).Model(&models.Session{}).Where("user_id = ?", userID).Count(&total).Error; err != nil {
+	offset := (page - 1) * limit
+	sessions, total, err := s.repo.FindSessionsByUserID(ctx, userID, limit, offset)
+	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count sessions: %w", err)
 	}
-
-	// Calculate offset
-	offset := (page - 1) * limit
-
-	// Fetch sessions with pagination
-	if err := s.getDB(ctx).Where("user_id = ?", userID).
-		Order("created_at DESC").
-		Limit(limit).
-		Offset(offset).
-		Find(&sessions).Error; err != nil {
-		return nil, 0, fmt.Errorf("failed to find sessions: %w", err)
-	}
-
 	return sessions, total, nil
 }

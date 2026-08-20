@@ -3,11 +3,13 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"fiberest/docs" // Import swagger docs
 	"fiberest/internal/common/constants"
 	"fiberest/internal/configs"
+	"fiberest/internal/database"
 	"fiberest/internal/middlewares"
 	"fiberest/internal/modules/auth"
 	"fiberest/pkg/http_error"
@@ -19,8 +21,54 @@ import (
 	"go.uber.org/fx"
 )
 
-func NewFiberApp(cfg *configs.Config, authService auth.AuthService) *fiber.App {
+// RegisterHealthRoutes registers liveness and readiness probes.
+// GET /health -> 200 {status:"ok", env, version}
+// GET /health/ready -> 200 if db.Ping succeeds within 2s else 503
+func RegisterHealthRoutes(app *fiber.App, db *database.DatabaseService, cfg *configs.Config) {
+	env := ""
+	if cfg != nil {
+		env = cfg.App.Env
+	}
+	// version is best-effort from constants
+	version := ""
+	// ponytail: no version constant yet; expose if build injects one later.
+
+	app.Get("/health", func(c fiber.Ctx) error {
+		resp := fiber.Map{
+			"status": "ok",
+			"env":    env,
+		}
+		if version != "" {
+			resp["version"] = version
+		}
+		// fallback to ApplicationName as version hint when no version injected
+		_ = constants.ApplicationName
+		return c.Status(fiber.StatusOK).JSON(resp)
+	})
+
+	app.Get("/health/ready", func(c fiber.Ctx) error {
+		if db == nil {
+			return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "ok"})
+		}
+		ctx, cancel := context.WithTimeout(c.Context(), 2*time.Second)
+		defer cancel()
+		if err := db.Ping(ctx); err != nil {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+				"status": "not ready",
+				"error":  err.Error(),
+			})
+		}
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "ok"})
+	})
+}
+
+func NewFiberApp(cfg *configs.Config, authService auth.AuthService, db *database.DatabaseService, logger *slog.Logger) *fiber.App {
 	app := fiber.New()
+
+	// Core middlewares: RequestID -> Recovery -> SecurityHeaders -> CORS -> limiter -> auth
+	app.Use(middlewares.RequestID())
+	app.Use(middlewares.Recovery(logger))
+	app.Use(middlewares.SecurityHeaders(cfg))
 
 	app.Get("/", func(c fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).SendString(constants.ApplicationName)
@@ -30,13 +78,20 @@ func NewFiberApp(cfg *configs.Config, authService auth.AuthService) *fiber.App {
 		return c.Status(fiber.StatusOK).SendString("OK")
 	})
 
-	// Configure CORS middleware
+	// Configure CORS middleware from typed config
+	origins := cfg.CORS.AllowOrigins
+	if len(origins) == 0 {
+		origins = []string{"*"}
+	}
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
+		AllowOrigins:     origins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		AllowCredentials: false,
+		AllowCredentials: cfg.CORS.AllowCredentials,
 	}))
+
+	// Health probes - before rate limiter so probes are not throttled, before AuthGuard (publicRoutes)
+	RegisterHealthRoutes(app, db, cfg)
 
 	// Register Swagger route - use FileContentString to bypass swag.ReadDoc()
 	// This avoids conflict between swag v1 and v2 versions
@@ -80,7 +135,7 @@ func Register404Handler(app *fiber.App) {
 }
 
 // RegisterFiberLifecycle registers the Fiber app lifecycle hooks with fx
-func RegisterFiberLifecycle(lc fx.Lifecycle, app *fiber.App, cfg *configs.Config) {
+func RegisterFiberLifecycle(lc fx.Lifecycle, app *fiber.App, cfg *configs.Config, logger *slog.Logger) {
 	port := cfg.GetString("PORT")
 	address := fmt.Sprintf(":%s", port)
 
@@ -89,7 +144,7 @@ func RegisterFiberLifecycle(lc fx.Lifecycle, app *fiber.App, cfg *configs.Config
 			// Register 404 handler last, after all routes are registered
 			Register404Handler(app)
 
-			fmt.Printf("Starting server on %s...\n", address)
+			logger.Info("starting server", slog.String("addr", address))
 
 			errCh := make(chan error, 1)
 			go func() {
@@ -111,7 +166,7 @@ func RegisterFiberLifecycle(lc fx.Lifecycle, app *fiber.App, cfg *configs.Config
 			}
 		},
 		OnStop: func(ctx context.Context) error {
-			fmt.Println("Shutting down server...")
+			logger.Info("shutting down server")
 			return app.Shutdown()
 		},
 	})

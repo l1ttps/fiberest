@@ -3,6 +3,7 @@ package main
 import (
 	"fiberest/internal/configs"
 	"fiberest/internal/database"
+	"fiberest/internal/logger"
 	"fiberest/internal/modules"
 	"fiberest/internal/server"
 
@@ -20,6 +21,7 @@ import (
 func main() {
 	app := fx.New(
 		configs.Module,
+		logger.Module,
 		database.Module,
 		modules.Module, // Provides auth, users, etc.
 		server.Module,  // Depends on auth.AuthService

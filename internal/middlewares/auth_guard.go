@@ -21,7 +21,10 @@ type AuthService interface {
 
 // publicRoutes defines the list of paths that do not require authentication
 var publicRoutes = []string{
+	"/",
 	"health-check",
+	"/health",
+	"/health/ready",
 	"/auth/login",
 	"/auth/init",
 	"/docs/*",

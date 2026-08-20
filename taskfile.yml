@@ -27,3 +27,35 @@ tasks:
     desc: Run all tests with race detector
     cmds:
       - go test ./... -race
+
+  lint:
+    desc: Run golangci-lint (fallback to go vet if not installed)
+    cmds:
+      - |
+        if command -v golangci-lint >/dev/null 2>&1; then
+          golangci-lint run ./...
+        else
+          echo "golangci-lint not found, falling back to go vet"
+          go vet ./...
+        fi
+
+  test:cover:
+    desc: Run tests with coverage report
+    cmds:
+      - go test ./... -count=1 -coverprofile=coverage.out
+      - go tool cover -func=coverage.out
+
+  docker:build:
+    desc: Build docker image
+    cmds:
+      - docker build -t fiberest:test .
+
+  docker:up:
+    desc: Build and start compose stack
+    cmds:
+      - docker compose up --build -d
+
+  docker:down:
+    desc: Stop compose stack
+    cmds:
+      - docker compose down

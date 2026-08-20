@@ -1,0 +1,20 @@
+version: "2"
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - unused
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - legacy
+    paths:
+      - docs
+formatters:
+  enable:
+    - gofmt
+    - goimports
+run:
+  timeout: 3m

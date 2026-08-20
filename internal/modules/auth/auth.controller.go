@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"fiberest/internal/common/validators"
+	"fiberest/internal/configs"
 	"fiberest/internal/middlewares"
 	"fiberest/internal/modules/auth/dto"
 	"fiberest/pkg/http_error"
@@ -16,13 +17,19 @@ import (
 // Controller handles authentication-related requests
 type Controller struct {
 	service AuthService
+	cfg     *configs.Config
 }
 
 // NewController creates a new auth controller
-func NewController(app *fiber.App, service AuthService) *Controller {
+func NewController(app *fiber.App, service AuthService, cfg *configs.Config) *Controller {
 	return &Controller{
 		service: service,
+		cfg:     cfg,
 	}
+}
+
+func (c *Controller) isSecureCookie() bool {
+	return c.cfg != nil && c.cfg.App.Env == "production"
 }
 
 // RegisterRoutes is invoked by fx to register auth routes
@@ -33,8 +40,8 @@ func RegisterRoutes(app *fiber.App, controller *Controller) {
 	// POST /auth/init - Initialize admin account
 	auth.Post("/init", controller.initAdmin)
 
-	// POST /auth/login - User login
-	auth.Post("/login", middlewares.Limiter(5, 60), controller.login)
+	// POST /auth/login - User login (strict: 5/min)
+	auth.Post("/login", middlewares.LoginLimiter(), controller.login)
 
 	// POST /auth/logout - User logout
 	auth.Post("/logout", middlewares.Limiter(5, 60), controller.logout)
@@ -123,7 +130,7 @@ func (c *Controller) login(ctx fiber.Ctx) error {
 		Value:    response.SessionToken,
 		Expires:  expiresAt,
 		HTTPOnly: true,
-		Secure:   true,
+		Secure:   c.isSecureCookie(),
 		SameSite: "Lax",
 		Path:     "/",
 	})
@@ -156,7 +163,7 @@ func (c *Controller) logout(ctx fiber.Ctx) error {
 		Value:    "",
 		Expires:  time.Now().Add(-1 * time.Hour), // Past expiration
 		HTTPOnly: true,
-		Secure:   true,
+		Secure:   c.isSecureCookie(),
 		SameSite: "Lax",
 		Path:     "/",
 	})

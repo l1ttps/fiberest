@@ -20,3 +20,6 @@ func Limiter(limit int, duration int) fiber.Handler {
 		},
 	})
 }
+
+// LoginLimiter is a strict per-route limiter for /auth/login: 5 req/min.
+func LoginLimiter() fiber.Handler { return Limiter(5, 60) }

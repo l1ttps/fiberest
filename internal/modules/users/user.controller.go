@@ -6,7 +6,9 @@ import (
 	"fiberest/internal/middlewares"
 	"fiberest/internal/models"
 	"fiberest/internal/modules/users/dto"
+	"fiberest/pkg/apperror"
 	"fiberest/pkg/http_error"
+	"fiberest/pkg/response"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -48,7 +50,8 @@ func UserRoutes(app *fiber.App, controller *Controller) {
 	adminOnly.Post("/", controller.createUser)
 }
 
-// getManyUsers handles GET /users request
+// getManyUsers handles GET /users request — example of new envelope (Paginated).
+// Other endpoints still use legacy http_error for backward compat.
 // @Summary Get many users
 // @Description Returns a paginated list of all users in the system with support for pagination, search by name/email, and filtering by user role (ADMIN or USER). Response includes comprehensive pagination metadata: total users count, current page number, total pages, and items per page.
 // @Tags Admin
@@ -66,17 +69,19 @@ func (c *Controller) getManyUsers(ctx fiber.Ctx) error {
 
 	// Parse and validate query parameters
 	if err := validators.GetQuery(ctx, &req); err != nil {
-		return validators.ResponseError(ctx, err)
+		// ponytail: other handlers still use validators.ResponseError (http_error legacy envelope); this endpoint uses the new envelope
+		return response.ValidationError(ctx, err.Error(), err)
 	}
 
 	// Call service to get users
-	response, err := c.service.GetManyUsers(ctx.Context(), req)
+	res, err := c.service.GetManyUsers(ctx.Context(), req)
 	if err != nil {
-		return http_error.InternalServerError(ctx, err.Error())
+		// ponytail: legacy http_error path kept on other handlers; this endpoint uses apperror envelope
+		return response.Error(ctx, apperror.Wrap(err, "INTERNAL_ERROR", 500, err.Error()))
 	}
 
-	// Return success response
-	return ctx.Status(fiber.StatusOK).JSON(response)
+	// New envelope: Paginated helper computes totalPages = ceil(total/limit)
+	return response.Paginated(ctx, res.Data, res.Page, res.Limit, res.Total)
 }
 
 // getUserByID handles GET /users/:id request
