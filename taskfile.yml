@@ -1,6 +1,18 @@
 version: '3'
 
 tasks:
+  init:
+    desc: Copy example.env to .env (if missing) and install dependencies
+    cmds:
+      - |
+        if [ -f .env ]; then
+          echo ".env already exists, skipping copy"
+        else
+          cp example.env .env && echo "Created .env from example.env"
+        fi
+      - go mod download
+      - go mod tidy
+
   docs:
     desc: Generate API documentation
     cmds:
