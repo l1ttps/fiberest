@@ -19,6 +19,8 @@ Swagger generation command (what Air runs):
 swag init -g cmd/server/main.go -o docs
 ```
 
+`docs/` is committed and CI fails on drift (`.github/workflows/ci.yml` job `docs`). After changing any `@Summary`/`@Success` annotation, run `task docs` and commit the result.
+
 ### Go version
 `go 1.25.0` — newer than standard. Required by `golang.org/x/crypto` and other deps.
 
@@ -42,29 +44,49 @@ Creating a module requires BOTH:
 
 ---
 
-## Server Depends on Auth (Critical DI Chain)
+## Authentication Is Per-Group (No Global Guard)
 
-`main.go` comment: `server.Module` depends on `auth.AuthService`.
+`app.Use(AuthGuard)` does NOT exist. Each module wraps the routes it protects:
 
-`server/fiber.go`:
-- `NewFiberApp(cfg *configs.Config, authService auth.AuthService)` — authService is injected
-- Global `app.Use(middlewares.AuthGuard(authService))` — applied to ALL routes
-- `auth.Module` has `AutoMigrate` for `Account` and `Session` models
+```go
+users := app.Group("/users")
+users.Patch("/me", middlewares.AuthGuard(authSvc), controller.patchMe)
 
-**Consequence**: Auth module MUST be registered and its DB migrations must run before server starts. FX handles this via dependency graph.
+adminOnly := users.Group("/", middlewares.AuthGuard(authSvc), middlewares.RoleGuard(models.RoleAdmin))
+adminOnly.Get("/", controller.getManyUsers)
+```
+
+Why: a global guard needs a hand-maintained public-path allow-list and makes unknown paths return 401 instead of 404. Per-group guards remove both problems.
+
+`middlewares.AuthGuard` takes `middlewares.AuthService` (3 methods). `auth.Module` re-exports `auth.AuthService` under that name:
+
+```go
+fx.Provide(func(s AuthService) middlewares.AuthService { return s })
+```
+
+**Consequence**: a module that registers protected routes must take `middlewares.AuthService` as a parameter of its route function (fx injects it). `internal/server/fx_test.go` validates the whole graph without a database — run it after touching DI.
+
+## Locals accessors
+
+Never read `c.Locals("user_id")` by hand. Use the typed helpers:
+```go
+user, ok := middlewares.User(ctx)
+userID, ok := middlewares.UserID(ctx)
+session, ok := middlewares.Session(ctx)
+```
+They are set by `AuthGuard`; each returns `ok=false` when unauthenticated.
 
 ---
 
-## Auth Module Auto-Migration
+## Schema Migrations
 
-`internal/modules/auth/auth.module.go` includes:
-```go
-fx.Invoke(func(db *database.DatabaseService) {
-    db.GetDB().AutoMigrate(&models.Account{}, &models.Session{})
-})
-```
+One place only: `internal/database/database.module.go` migrates **all** models (`User`, `Account`, `Session`) in a single `AutoMigrate`, gated by `DB_AUTO_MIGRATE`.
 
-This runs automatically when the FX container starts. Don't add similar migrations elsewhere without checking if they belong in the module.
+- Default: `true` when `APP_ENV != production`, `false` in production.
+- Don't add `AutoMigrate` calls inside feature modules.
+- Production is expected to migrate out-of-band (versioned migration tool).
+
+`database.Module` also registers `OnStop: db.Close()`; the DB pool is closed on shutdown.
 
 ---
 
@@ -76,13 +98,21 @@ Route: `GET /docs/*` returns Scalar interface. Docs generated into `docs/` folde
 
 ---
 
-## Port Configuration
+## Configuration (env only, no viper)
 
-- `example.env`: `PORT=3278`
-- `.env`: `PORT=3278`
-- `server/fiber.go`: reads from `cfg.GetString("PORT")`
+`internal/configs/config.service.go` loads config with a small reflection loader over struct tags:
 
-**Use**: Set in `.env` (create from `example.env`). Default is 3278.
+```go
+Port int `env:"PORT" default:"3278" validate:"required,min=1,max=65535"`
+```
+
+Precedence per key: **process env > `.env` file > `default` tag**. `.env` is loaded with `gotenv.Load`, which never overwrites an existing env var.
+
+- Add a new setting by adding a tagged field — no other wiring.
+- Legacy `cfg.GetString("PORT")` accessors are gone; use `cfg.App.Port` etc.
+- Conditional defaults resolved in `NewConfig`: `LOG_FORMAT` (json in production), `CORS_ALLOW_ORIGINS` (`*` only in development), `DB_AUTO_MIGRATE`, `SESSION_COOKIE_SECURE`.
+
+Port lives in `cfg.App.Port` (default 3278); set `PORT` in `.env`.
 
 ---
 
@@ -101,46 +131,54 @@ Not from a shared location. Each module owns its DTOs.
 
 ## Validation Pattern
 
-Always use the validator:
-
-**Request Body:**
 ```go
-var req dto.RequestType
+// Request body
 if err := validators.ParseAndValidate(ctx, &req); err != nil {
-    return validators.ResponseError(ctx, err)
+    return validators.Invalid(err)
 }
-```
 
-**Query Parameters:**
-```go
-var query dto.QueryType
+// Query parameters (applies types.GetManyRequest.SetDefaults)
 if err := validators.GetQuery(ctx, &query); err != nil {
-    return validators.ResponseError(ctx, err)
+    return validators.Invalid(err)
 }
-```
 
-**Path Parameters:**
-```go
-var params dto.ParamType
+// Path parameters (Fiber's Bind().URI, `param:"id"` tags)
 if err := validators.GetParam(ctx, &params); err != nil {
-    return validators.ResponseError(ctx, err)
+    return validators.Invalid(err)
 }
 ```
 
-Located in `internal/common/validators/`. Returns proper HTTP 400 with field errors.
+- `validators.Invalid(err)` returns a 400 `*http_error.Error` carrying field details.
+- Pagination fields must stay optional: `validate:"omitempty,min=1,max=100"` plus `SetDefaults` (the `Defaulter` interface is called by `GetQuery`).
+- Path IDs are UUIDs: tag them `validate:"required,uuid"` so a malformed id is a 400, not a Postgres 500.
 
 ---
 
-## Error Response Helper
+## Errors: Return, Don't Write
 
-Use `http_error` package for consistent errors:
+There is exactly one place that writes an error body: `http_error.NewHandler`, wired as `fiber.Config.ErrorHandler` in `server.NewFiberApp`.
+
 ```go
-import "fiberest/pkg/http_error"
-
-return http_error.BadRequest(ctx, "message")
-return http_error.NotFound(ctx, "message")
-return http_error.TooManyRequests(ctx, "message")
+return http_error.NotFound("user not found")   // 404, message sent to client
+return http_error.Internal(err)                // 500, cause logged, client sees "Internal server error"
 ```
+
+- Never pass `err.Error()` from a DB/service call into a 4xx/5xx message — that leaks internals.
+- Controllers map service sentinels with a module-local `mapError(err)` helper.
+- `pkg/http_error` must not import `internal/*` (it reads the request id from the `X-Request-ID` header instead).
+
+---
+
+## Pagination
+
+Single shape, single calculation:
+
+```go
+types.PageMeta          // Limit, Page, PageCount, HasNextPage, Total — embedded in DTOs
+types.NewPageMeta(limit, page, total)
+```
+
+Don't compute `pageCount`/`hasNextPage` anywhere else.
 
 ---
 
@@ -163,6 +201,7 @@ task dev      # Hot reload (runs docs → build)
 task run      # Build docs → run binary
 task build    # Build docs → compile binary (./bin/server)
 task docs     # Generate Swagger (swag init)
+task test     # go test ./... -race
 ```
 
 ---
