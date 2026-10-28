@@ -14,6 +14,7 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
+      - run: go vet ./...
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v8
         with:
@@ -28,7 +29,7 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
-      - run: go test ./... -count=1
+      - run: go test ./... -count=1 -race
 
   build:
     runs-on: ubuntu-latest
@@ -39,6 +40,23 @@ jobs:
           go-version: "1.25"
           cache: true
       - run: go build ./...
+
+  # docs/ is committed and shipped inside the Docker image, so it must match the
+  # annotations. Without this check the served OpenAPI silently goes stale.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+      - name: Install swag
+        run: go install github.com/swaggo/swag/cmd/swag@v1.16.6
+      - name: Regenerate docs
+        run: swag init -g cmd/server/main.go -o docs
+      - name: Fail on drift
+        run: git diff --exit-code docs/
 
   docker:
     runs-on: ubuntu-latest

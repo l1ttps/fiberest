@@ -37,6 +37,14 @@ services:
         condition: service_healthy
     environment:
       DB_HOST: postgres
+      # Compose is a production-shaped deployment: production defaults (Secure
+      # cookies, JSON logs, no wildcard CORS, no implicit auto-migrate).
+      # Set APP_ENV=development for local http testing, and SESSION_COOKIE_SECURE=false
+      # if you terminate TLS somewhere that the app cannot see.
+      APP_ENV: ${APP_ENV:-production}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      DB_AUTO_MIGRATE: ${DB_AUTO_MIGRATE:-true}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
 
 volumes:
   pgdata:
