@@ -34,12 +34,6 @@ type LoginResponse struct {
 	ExpiresAt    string `json:"expiresAt"` // Session expiration time (ISO 8601 format)
 }
 
-// RefreshTokenRequest represents the request body for token refresh
-// DEPRECATED: No longer used in session-based auth
-type RefreshTokenRequest struct {
-	RefreshToken string `json:"refreshToken" validate:"required"`
-}
-
 // ChangePasswordRequest represents the request body for changing password
 type ChangePasswordRequest struct {
 	CurrentPassword string `json:"currentPassword" validate:"required"`
@@ -51,30 +45,19 @@ type ChangePasswordResponse struct {
 	Message string `json:"message" example:"Password changed successfully"`
 }
 
-// GetManySessionsRequest extends the common GetManyRequest
+// GetManySessionsRequest extends the common GetManyRequest (which supplies
+// SetDefaults, so limit/page stay optional).
 type GetManySessionsRequest struct {
 	types.GetManyRequest
 }
 
-func (r *GetManySessionsRequest) SetDefaults() {
-	if r.Limit == 0 {
-		r.Limit = 10
-	}
-	if r.Page == 0 {
-		r.Page = 1
-	}
-}
-
 // GetManySessionsResponse represents the paginated sessions response
 type GetManySessionsResponse struct {
-	Data        []SessionResponse `json:"data"`
-	Limit       int               `json:"limit"`
-	Page        int               `json:"page"`
-	HasNextPage bool              `json:"hasNextPage"`
-	Total       int64             `json:"total"`
+	Data []SessionResponse `json:"data"`
+	types.PageMeta
 }
 
-// SessionResponse represents session data in responses
+// SessionResponse is the client-safe view of a session: it never carries the token.
 type SessionResponse struct {
 	ID         string    `json:"id"`
 	UserID     string    `json:"userId"`

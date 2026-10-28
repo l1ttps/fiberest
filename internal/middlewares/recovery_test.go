@@ -3,10 +3,14 @@ package middlewares
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"fiberest/pkg/http_error"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
@@ -16,19 +20,23 @@ import (
 func TestRecovery_CatchesPanic(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
-	app := fiber.New()
+	app := fiber.New(fiber.Config{ErrorHandler: http_error.NewHandler(logger)})
 	app.Use(RequestID())
 	app.Use(Recovery(logger))
 	app.Get("/panic", func(c fiber.Ctx) error {
 		panic("boom")
 	})
-	req := httptest.NewRequest(http.MethodGet, "/panic", nil)
-	resp, err := app.Test(req)
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/panic", nil))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
-	var body map[string]interface{}
-	require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
-	assert.Equal(t, float64(500), body["status"])
+
+	body, _ := io.ReadAll(resp.Body)
+	var parsed map[string]any
+	require.NoError(t, json.Unmarshal(body, &parsed))
+	assert.Equal(t, float64(500), parsed["status"])
+	assert.NotContains(t, string(body), "boom", "panic value must not reach the client")
+	assert.Contains(t, buf.String(), "panic recovered")
 }
 
 func TestRecovery_PassthroughWhenNoPanic(t *testing.T) {
@@ -39,8 +47,7 @@ func TestRecovery_PassthroughWhenNoPanic(t *testing.T) {
 	app.Get("/ok", func(c fiber.Ctx) error {
 		return c.SendString("ok")
 	})
-	req := httptest.NewRequest(http.MethodGet, "/ok", nil)
-	resp, err := app.Test(req)
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/ok", nil))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -48,7 +55,7 @@ func TestRecovery_PassthroughWhenNoPanic(t *testing.T) {
 func TestRecovery_LogsRequestID(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, nil))
-	app := fiber.New()
+	app := fiber.New(fiber.Config{ErrorHandler: http_error.NewHandler(logger)})
 	app.Use(RequestID())
 	app.Use(Recovery(logger))
 	app.Get("/panic2", func(c fiber.Ctx) error {
@@ -58,5 +65,5 @@ func TestRecovery_LogsRequestID(t *testing.T) {
 	req.Header.Set(RequestIDHeader, "test-req-id")
 	_, err := app.Test(req)
 	require.NoError(t, err)
-	assert.Contains(t, buf.String(), "test-req-id")
+	assert.True(t, strings.Contains(buf.String(), "test-req-id"))
 }

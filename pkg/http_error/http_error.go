@@ -1,93 +1,172 @@
+// Package http_error defines the single error type used across the app and the
+// Fiber error handler that renders it.
+//
+// Handlers return errors instead of writing responses, so internal details
+// (SQL errors, DSNs, stack traces) never reach clients: the handler logs the
+// full cause and emits a generic message.
 package http_error
 
-import "github.com/gofiber/fiber/v3"
+import (
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"strings"
 
-// ErrorResponse represents a standard error response
+	"github.com/gofiber/fiber/v3"
+)
+
+// RequestIDHeader mirrors middlewares.RequestIDHeader. Duplicated on purpose:
+// pkg must not import internal.
+const RequestIDHeader = "X-Request-ID"
+
+// ErrorResponse is the JSON body returned for every failed request.
 type ErrorResponse struct {
-	Status  int    `json:"status"`
-	Message string `json:"message"`
+	Status    int    `json:"status"`
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	RequestID string `json:"requestId,omitempty"`
+	Details   any    `json:"details,omitempty"`
 }
 
-// Response sends an error response with the given status code and message
-func Response(ctx fiber.Ctx, status int, message string) error {
-	return ctx.Status(status).JSON(ErrorResponse{
-		Status:  status,
-		Message: message,
+// Error is an error carrying HTTP semantics.
+type Error struct {
+	Status  int
+	Code    string
+	Message string
+	Details any
+	Cause   error
+}
+
+func (e *Error) Error() string {
+	if e.Cause != nil {
+		return fmt.Sprintf("%s: %v", e.Message, e.Cause)
+	}
+	return e.Message
+}
+
+// Unwrap exposes the cause to errors.Is/As.
+func (e *Error) Unwrap() error { return e.Cause }
+
+// WithDetails attaches a machine-readable payload (e.g. field errors).
+func (e *Error) WithDetails(details any) *Error {
+	e.Details = details
+	return e
+}
+
+// New builds an Error.
+func New(status int, code, message string) *Error {
+	return &Error{Status: status, Code: code, Message: message}
+}
+
+// Wrap builds an Error around a cause.
+func Wrap(cause error, status int, code, message string) *Error {
+	return &Error{Status: status, Code: code, Message: message, Cause: cause}
+}
+
+func fallback(msg, def string) string {
+	if msg == "" {
+		return def
+	}
+	return msg
+}
+
+// 4xx helpers. Messages reach the client, so keep them safe.
+
+func BadRequest(msg string) *Error {
+	return New(http.StatusBadRequest, "BAD_REQUEST", fallback(msg, "Bad request"))
+}
+
+func Unauthorized(msg string) *Error {
+	return New(http.StatusUnauthorized, "UNAUTHORIZED", fallback(msg, "Unauthorized"))
+}
+
+func Forbidden(msg string) *Error {
+	return New(http.StatusForbidden, "FORBIDDEN", fallback(msg, "Forbidden"))
+}
+
+func NotFound(msg string) *Error {
+	return New(http.StatusNotFound, "NOT_FOUND", fallback(msg, "Resource not found"))
+}
+
+func Conflict(msg string) *Error {
+	return New(http.StatusConflict, "CONFLICT", fallback(msg, "Conflict"))
+}
+
+func TooManyRequests(msg string) *Error {
+	return New(http.StatusTooManyRequests, "TOO_MANY_REQUESTS", fallback(msg, "Too many requests"))
+}
+
+// Internal wraps a cause that must never be shown to the client.
+func Internal(cause error) *Error {
+	return Wrap(cause, http.StatusInternalServerError, "INTERNAL_ERROR", "Internal server error")
+}
+
+func requestID(c fiber.Ctx) string {
+	if id := c.GetRespHeader(RequestIDHeader); id != "" {
+		return id
+	}
+	return c.Get(RequestIDHeader)
+}
+
+func write(c fiber.Ctx, e *Error) error {
+	status := e.Status
+	if status == 0 {
+		status = http.StatusInternalServerError
+	}
+	code := e.Code
+	if code == "" {
+		code = "INTERNAL_ERROR"
+	}
+	return c.Status(status).JSON(ErrorResponse{
+		Status:    status,
+		Code:      code,
+		Message:   e.Message,
+		RequestID: requestID(c),
+		Details:   e.Details,
 	})
 }
 
-// BadRequest returns a 400 Bad Request error
-func BadRequest(ctx fiber.Ctx, message string) error {
-	return Response(ctx, fiber.StatusBadRequest, message)
-}
-
-// Unauthorized returns a 401 Unauthorized error
-func Unauthorized(ctx fiber.Ctx, message string) error {
-	if message == "" {
-		message = "Unauthorized"
+// NewHandler returns the app-wide fiber.ErrorHandler. Unknown errors become a
+// generic 500 and are logged with the cause; *Error values render as-is.
+func NewHandler(logger *slog.Logger) fiber.ErrorHandler {
+	if logger == nil {
+		logger = slog.Default()
 	}
-	return Response(ctx, fiber.StatusUnauthorized, message)
-}
+	return func(c fiber.Ctx, err error) error {
+		var e *Error
+		if errors.As(err, &e) {
+			if e.Status >= http.StatusInternalServerError {
+				logger.Error("request failed",
+					slog.String("error", e.Error()),
+					slog.String("method", c.Method()),
+					slog.String("path", c.Path()),
+					slog.String("request_id", requestID(c)),
+				)
+			}
+			return write(c, e)
+		}
 
-// Forbidden returns a 403 Forbidden error
-func Forbidden(ctx fiber.Ctx, message string) error {
-	if message == "" {
-		message = "Forbidden"
+		// Fiber's own errors (404 unmatched route, 405, body too large) keep
+		// their status; anything else is an unexpected 500.
+		var fe *fiber.Error
+		if errors.As(err, &fe) {
+			return write(c, New(fe.Code, codeFromStatus(fe.Code), fe.Message))
+		}
+
+		logger.Error("unhandled error",
+			slog.String("error", err.Error()),
+			slog.String("method", c.Method()),
+			slog.String("path", c.Path()),
+			slog.String("request_id", requestID(c)),
+		)
+		return write(c, Internal(err))
 	}
-	return Response(ctx, fiber.StatusForbidden, message)
 }
 
-// NotFound returns a 404 Not Found error
-func NotFound(ctx fiber.Ctx, message string) error {
-	if message == "" {
-		message = "Resource not found"
+func codeFromStatus(status int) string {
+	if s := http.StatusText(status); s != "" {
+		return strings.ToUpper(strings.ReplaceAll(s, " ", "_"))
 	}
-	return Response(ctx, fiber.StatusNotFound, message)
-}
-
-// Conflict returns a 409 Conflict error
-func Conflict(ctx fiber.Ctx, message string) error {
-	return Response(ctx, fiber.StatusConflict, message)
-}
-
-// UnprocessableEntity returns a 422 Unprocessable Entity error
-func UnprocessableEntity(ctx fiber.Ctx, message string) error {
-	return Response(ctx, fiber.StatusUnprocessableEntity, message)
-}
-
-// TooManyRequests returns a 429 Too Many Requests error (Rate Limit)
-func TooManyRequests(ctx fiber.Ctx, message string) error {
-	if message == "" {
-		message = "Too many requests"
-	}
-	return Response(ctx, fiber.StatusTooManyRequests, message)
-}
-
-// InternalServerError returns a 500 Internal Server Error
-func InternalServerError(ctx fiber.Ctx, message string) error {
-	if message == "" {
-		message = "Internal server error"
-	}
-	return Response(ctx, fiber.StatusInternalServerError, message)
-}
-
-// BadGateway returns a 502 Bad Gateway error
-func BadGateway(ctx fiber.Ctx, message string) error {
-	if message == "" {
-		message = "Bad gateway"
-	}
-	return Response(ctx, fiber.StatusBadGateway, message)
-}
-
-// ServiceUnavailable returns a 503 Service Unavailable error
-func ServiceUnavailable(ctx fiber.Ctx, message string) error {
-	if message == "" {
-		message = "Service unavailable"
-	}
-	return Response(ctx, fiber.StatusServiceUnavailable, message)
-}
-
-// Custom returns an error response with a custom status code
-func Custom(ctx fiber.Ctx, status int, message string) error {
-	return Response(ctx, status, message)
+	return "ERROR"
 }

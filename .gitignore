@@ -57,6 +57,10 @@ build/
 tmp/
 temp/
 *.tmp
+.gocache/
+.gomodcache/
+tidy.log
+tidy.exit
 
 # Coverage reports
 coverage.txt
@@ -69,3 +73,4 @@ debug
 # Air (live reload) temporary files
 tmp/
 .kilo/plans/*
+.gocache

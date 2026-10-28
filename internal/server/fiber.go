@@ -2,16 +2,17 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"slices"
 	"time"
 
 	"fiberest/docs" // Import swagger docs
-	"fiberest/internal/common/constants"
 	"fiberest/internal/configs"
 	"fiberest/internal/database"
 	"fiberest/internal/middlewares"
-	"fiberest/internal/modules/auth"
 	"fiberest/pkg/http_error"
 
 	"github.com/gofiber/fiber/v3"
@@ -21,29 +22,22 @@ import (
 	"go.uber.org/fx"
 )
 
+const (
+	bodyLimit    = 4 << 20 // 4 MiB
+	readTimeout  = 10 * time.Second
+	writeTimeout = 20 * time.Second
+	idleTimeout  = 60 * time.Second
+)
+
 // RegisterHealthRoutes registers liveness and readiness probes.
-// GET /health -> 200 {status:"ok", env, version}
+// GET /health -> 200 {status:"ok", env}
 // GET /health/ready -> 200 if db.Ping succeeds within 2s else 503
 func RegisterHealthRoutes(app *fiber.App, db *database.DatabaseService, cfg *configs.Config) {
-	env := ""
-	if cfg != nil {
-		env = cfg.App.Env
-	}
-	// version is best-effort from constants
-	version := ""
-	// ponytail: no version constant yet; expose if build injects one later.
-
 	app.Get("/health", func(c fiber.Ctx) error {
-		resp := fiber.Map{
+		return c.Status(fiber.StatusOK).JSON(fiber.Map{
 			"status": "ok",
-			"env":    env,
-		}
-		if version != "" {
-			resp["version"] = version
-		}
-		// fallback to ApplicationName as version hint when no version injected
-		_ = constants.ApplicationName
-		return c.Status(fiber.StatusOK).JSON(resp)
+			"env":    cfg.App.Env,
+		})
 	})
 
 	app.Get("/health/ready", func(c fiber.Ctx) error {
@@ -53,121 +47,115 @@ func RegisterHealthRoutes(app *fiber.App, db *database.DatabaseService, cfg *con
 		ctx, cancel := context.WithTimeout(c.Context(), 2*time.Second)
 		defer cancel()
 		if err := db.Ping(ctx); err != nil {
-			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
-				"status": "not ready",
-				"error":  err.Error(),
-			})
+			// Generic body on purpose: probe errors may name internal hosts.
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"status": "not ready"})
 		}
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "ok"})
 	})
 }
 
-func NewFiberApp(cfg *configs.Config, authService auth.AuthService, db *database.DatabaseService, logger *slog.Logger) *fiber.App {
-	app := fiber.New()
+func NewFiberApp(cfg *configs.Config, db *database.DatabaseService, logger *slog.Logger) *fiber.App {
+	app := fiber.New(fiber.Config{
+		AppName:      cfg.App.Name,
+		BodyLimit:    bodyLimit,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
+		IdleTimeout:  idleTimeout,
+		ErrorHandler: http_error.NewHandler(logger),
+	})
 
-	// Core middlewares: RequestID -> Recovery -> SecurityHeaders -> CORS -> limiter -> auth
+	// Core middlewares: RequestID -> Recovery -> SecurityHeaders -> CORS -> limiter.
 	app.Use(middlewares.RequestID())
 	app.Use(middlewares.Recovery(logger))
 	app.Use(middlewares.SecurityHeaders(cfg))
 
 	app.Get("/", func(c fiber.Ctx) error {
-		return c.Status(fiber.StatusOK).SendString(constants.ApplicationName)
+		return c.Status(fiber.StatusOK).SendString(cfg.App.Name)
 	})
 
 	app.Get("/health-check", func(c fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).SendString("OK")
 	})
 
-	// Configure CORS middleware from typed config
 	origins := cfg.CORS.AllowOrigins
 	if len(origins) == 0 {
 		origins = []string{"*"}
 	}
+	allowCredentials := cfg.CORS.AllowCredentials
+	if allowCredentials && slices.Contains(origins, "*") {
+		// Credentialed wildcard is invalid per the CORS spec; browsers reject it.
+		allowCredentials = false
+	}
 	app.Use(cors.New(cors.Config{
 		AllowOrigins:     origins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		AllowCredentials: cfg.CORS.AllowCredentials,
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Request-ID"},
+		AllowCredentials: allowCredentials,
 	}))
 
-	// Health probes - before rate limiter so probes are not throttled, before AuthGuard (publicRoutes)
+	// Health probes are registered before the rate limiter so they are never throttled.
 	RegisterHealthRoutes(app, db, cfg)
 
-	// Register Swagger route - use FileContentString to bypass swag.ReadDoc()
-	// This avoids conflict between swag v1 and v2 versions
-	swaggerContent := docs.SwaggerInfo.ReadDoc()
-
+	// Scalar API docs. FileContentString bypasses swag.ReadDoc() (swag v1/v2 conflict).
 	app.Get("/docs/*", scalar.New(scalar.Config{
-		FileContentString: swaggerContent,
-		Title:             fmt.Sprintf("%s API Documentation", constants.ApplicationName),
+		FileContentString: docs.SwaggerInfo.ReadDoc(),
+		Title:             fmt.Sprintf("%s API Documentation", cfg.App.Name),
 		CacheAge:          3600,
 		ForceOffline:      scalar.ForceOfflineTrue,
 		FallbackCacheAge:  86400,
 	}))
 
-	// Rate limiting middleware
 	app.Use(limiter.New(limiter.Config{
 		Max:        20,
 		Expiration: 1 * time.Second,
 		LimitReached: func(c fiber.Ctx) error {
-			return http_error.TooManyRequests(c, "Rate limit reached, please try again later")
+			return http_error.TooManyRequests("Rate limit reached, please try again later")
 		},
 	}))
 
-	// Global AuthGuard middleware (session-based)
-	app.Use(middlewares.AuthGuard(authService))
-
+	// Authentication is applied per route group (see the auth/users modules); there
+	// is no global guard, so unknown paths fall through to the 404 handler below.
 	return app
 }
 
-// Register404Handler registers the 404 handler for unmatched routes
-// This must be called AFTER all other routes are registered
+// Register404Handler registers the catch-all for unmatched routes.
+// This must be called AFTER all other routes are registered.
 func Register404Handler(app *fiber.App) {
 	app.All("*", func(c fiber.Ctx) error {
-		method := c.Method()
-		path := c.Path()
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-			"status":  fiber.StatusNotFound,
-			"error":   "Not Found",
-			"message": fmt.Sprintf("Cannot %s %s", method, path),
-		})
+		return http_error.NotFound(fmt.Sprintf("Cannot %s %s", c.Method(), c.Path()))
 	})
 }
 
-// RegisterFiberLifecycle registers the Fiber app lifecycle hooks with fx
+// RegisterFiberLifecycle binds the listener synchronously (so a bad port fails
+// startup loudly) and shuts down gracefully on stop.
 func RegisterFiberLifecycle(lc fx.Lifecycle, app *fiber.App, cfg *configs.Config, logger *slog.Logger) {
-	port := cfg.GetString("PORT")
-	address := fmt.Sprintf(":%s", port)
+	address := fmt.Sprintf(":%d", cfg.App.Port)
 
 	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			// Register 404 handler last, after all routes are registered
+		OnStart: func(context.Context) error {
 			Register404Handler(app)
 
-			logger.Info("starting server", slog.String("addr", address))
+			ln, err := net.Listen("tcp", address)
+			if err != nil {
+				return fmt.Errorf("listen %s: %w", address, err)
+			}
 
-			errCh := make(chan error, 1)
+			logger.Info("starting server", slog.String("addr", address), slog.String("env", cfg.App.Env))
+
 			go func() {
-				if err := app.Listen(address); err != nil {
-					errCh <- err
+				err := app.Listener(ln, fiber.ListenConfig{
+					DisableStartupMessage: cfg.App.Env != "development",
+				})
+				if err != nil && !errors.Is(err, net.ErrClosed) {
+					logger.Error("server stopped", slog.String("error", err.Error()))
 				}
 			}()
 
-			// Wait for server to start or fail, or context to timeout
-			select {
-			case err := <-errCh:
-				return fmt.Errorf("server failed to start: %w", err)
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(2 * time.Second):
-				// Assume server started successfully if no error after 2s
-				// Fiber doesn't have a "Ready" signal, so this is a heuristic
-				return nil
-			}
+			return nil
 		},
 		OnStop: func(ctx context.Context) error {
 			logger.Info("shutting down server")
-			return app.Shutdown()
+			return app.ShutdownWithContext(ctx)
 		},
 	})
 }

@@ -1,11 +1,7 @@
-// Package validators provides reusable validation utilities using go-playground/validator
+// Package validators binds and validates request data with go-playground/validator.
 package validators
 
 import (
-	"errors"
-	"fmt"
-	"reflect"
-	"strconv"
 	"strings"
 
 	"fiberest/pkg/http_error"
@@ -14,30 +10,34 @@ import (
 	"github.com/gofiber/fiber/v3"
 )
 
-// Validator is a singleton instance of the validator
+// Validator is the shared validator instance.
 var Validator = validator.New()
 
-// ValidationError represents a single validation error
+// ValidationError is a single field-level failure.
 type ValidationError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
 }
 
-// ValidationErrors is a collection of validation errors
+// ValidationErrors is returned by ValidateStruct and serialized as error details.
 type ValidationErrors []ValidationError
 
-// Error implements the error interface
+// Error implements the error interface.
 func (ve ValidationErrors) Error() string {
-	var messages []string
+	messages := make([]string, 0, len(ve))
 	for _, err := range ve {
 		messages = append(messages, err.Message)
 	}
 	return strings.Join(messages, "; ")
 }
 
-// ValidateStruct validates a struct using the singleton validator
-// Returns ValidationErrors if validation fails, nil if successful
-func ValidateStruct(s interface{}) error {
+// Defaulter is implemented by request structs that fill omitted fields.
+type Defaulter interface {
+	SetDefaults()
+}
+
+// ValidateStruct validates a struct, returning ValidationErrors on failure.
+func ValidateStruct(s any) error {
 	if err := Validator.Struct(s); err != nil {
 		if validationErrors, ok := err.(validator.ValidationErrors); ok {
 			return formatValidationErrors(validationErrors)
@@ -47,25 +47,30 @@ func ValidateStruct(s interface{}) error {
 	return nil
 }
 
-// formatValidationErrors converts validator.ValidationErrors to ValidationErrors
-func formatValidationErrors(errs validator.ValidationErrors) ValidationErrors {
-	var errors ValidationErrors
-	for _, err := range errs {
-		errors = append(errors, ValidationError{
-			Field:   err.Field(),
-			Message: getErrorMessage(err),
-		})
-	}
-	return errors
+// Invalid converts a bind/validation failure into a 400 the error handler renders.
+func Invalid(err error) error {
+	return http_error.BadRequest(err.Error()).WithDetails(err)
 }
 
-// getErrorMessage returns a user-friendly error message for a validation error
+func formatValidationErrors(errs validator.ValidationErrors) ValidationErrors {
+	out := make(ValidationErrors, 0, len(errs))
+	for _, err := range errs {
+		out = append(out, ValidationError{Field: err.Field(), Message: getErrorMessage(err)})
+	}
+	return out
+}
+
+// getErrorMessage returns a user-friendly message for a field error.
 func getErrorMessage(err validator.FieldError) string {
 	switch err.Tag() {
 	case "required":
 		return err.Field() + " is required"
 	case "email":
 		return err.Field() + " must be a valid email address"
+	case "uuid":
+		return err.Field() + " must be a valid UUID"
+	case "oneof":
+		return err.Field() + " must be one of: " + strings.ReplaceAll(err.Param(), " ", ", ")
 	case "min":
 		return err.Field() + " must be at least " + err.Param() + " characters"
 	case "max":
@@ -75,112 +80,33 @@ func getErrorMessage(err validator.FieldError) string {
 	}
 }
 
-func ParseAndValidate(ctx fiber.Ctx, dest interface{}) error {
-	// Parse request body
+// ParseAndValidate binds the JSON body, applies defaults and validates.
+func ParseAndValidate(ctx fiber.Ctx, dest any) error {
 	if err := ctx.Bind().Body(dest); err != nil {
 		return err
 	}
-
-	// Validate parsed data
-	return ValidateStruct(dest)
+	return finish(dest)
 }
 
-// GetBody binds request body and validates the struct
-func GetBody(ctx fiber.Ctx, dest interface{}) error {
-	return ParseAndValidate(ctx, dest)
-}
-
-// GetQuery binds query parameters and validates the struct
-func GetQuery(ctx fiber.Ctx, dest interface{}) error {
+// GetQuery binds query parameters, applies defaults and validates.
+func GetQuery(ctx fiber.Ctx, dest any) error {
 	if err := ctx.Bind().Query(dest); err != nil {
 		return err
 	}
+	return finish(dest)
+}
+
+// GetParam binds path parameters (`param:"key"` tags) and validates.
+func GetParam(ctx fiber.Ctx, dest any) error {
+	if err := ctx.Bind().URI(dest); err != nil {
+		return err
+	}
+	return finish(dest)
+}
+
+func finish(dest any) error {
+	if d, ok := dest.(Defaulter); ok {
+		d.SetDefaults()
+	}
 	return ValidateStruct(dest)
-}
-
-// GetParam binds URL path parameters and validates the struct
-// Uses struct tags with `param:"key"` to map path parameters to struct fields
-func GetParam(ctx fiber.Ctx, dest interface{}) error {
-	val := reflect.ValueOf(dest)
-	if val.Kind() == reflect.Pointer {
-		val = val.Elem()
-	}
-
-	if val.Kind() != reflect.Struct {
-		return errors.New("dest must be a struct or struct pointer")
-	}
-
-	typ := val.Type()
-	for i := 0; i < typ.NumField(); i++ {
-		field := typ.Field(i)
-		paramKey := field.Tag.Get("param")
-		if paramKey == "" {
-			// Use field name as param key if tag not specified
-			paramKey = field.Name
-		}
-
-		paramValue := ctx.Params(paramKey)
-		if paramValue == "" {
-			// Check if field is required via validate tag
-			if validateTag := field.Tag.Get("validate"); strings.Contains(validateTag, "required") {
-				return fmt.Errorf("%s is required", paramKey)
-			}
-			// Continue if not required
-			continue
-		}
-
-		// Set the field value
-		if err := setFieldValue(val.Field(i), paramValue, field.Type); err != nil {
-			return fmt.Errorf("failed to set param %s: %w", paramKey, err)
-		}
-	}
-
-	return ValidateStruct(dest)
-}
-
-// setFieldValue sets a reflect.Value from a string based on the field's type
-func setFieldValue(field reflect.Value, value string, typ reflect.Type) error {
-	if !field.CanSet() {
-		return fmt.Errorf("cannot set field")
-	}
-
-	switch typ.Kind() {
-	case reflect.String:
-		field.SetString(value)
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		intVal, err := strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			return err
-		}
-		field.SetInt(intVal)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		uintVal, err := strconv.ParseUint(value, 10, 64)
-		if err != nil {
-			return err
-		}
-		field.SetUint(uintVal)
-	case reflect.Bool:
-		boolVal, err := strconv.ParseBool(value)
-		if err != nil {
-			return err
-		}
-		field.SetBool(boolVal)
-	case reflect.Float32, reflect.Float64:
-		floatVal, err := strconv.ParseFloat(value, typ.Bits())
-		if err != nil {
-			return err
-		}
-		field.SetFloat(floatVal)
-	default:
-		return fmt.Errorf("unsupported type: %s", typ.Kind())
-	}
-
-	return nil
-}
-
-func ResponseError(ctx fiber.Ctx, err error) error {
-	return ctx.Status(fiber.StatusBadRequest).JSON(http_error.ErrorResponse{
-		Status:  fiber.StatusBadRequest,
-		Message: err.Error(),
-	})
 }

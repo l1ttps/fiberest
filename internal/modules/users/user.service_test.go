@@ -53,11 +53,6 @@ func TestErrorConstants(t *testing.T) {
 			err:      ErrUserAlreadyExists,
 			expected: "user already exists",
 		},
-		{
-			name:     "ErrAdminExists",
-			err:      ErrAdminExists,
-			expected: "admin user already exists",
-		},
 	}
 
 	for _, tt := range tests {

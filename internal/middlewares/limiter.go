@@ -1,22 +1,24 @@
 package middlewares
 
 import (
-	"fiberest/pkg/http_error"
 	"time"
+
+	"fiberest/pkg/http_error"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
 )
 
-// Middleware wraps Fiber's built-in limiter middleware.
-// limit: Maximum number of requests allowed.
-// duration: Time window in seconds.
+// Limiter wraps Fiber's rate limiter.
+//
+// ponytail: default in-memory storage is per-process, so the limit multiplies
+// with replicas. Swap in a shared storage (Redis) when running more than one.
 func Limiter(limit int, duration int) fiber.Handler {
 	return limiter.New(limiter.Config{
 		Max:        limit,
 		Expiration: time.Duration(duration) * time.Second,
 		LimitReached: func(c fiber.Ctx) error {
-			return http_error.TooManyRequests(c, "Rate limit reached, please try again later")
+			return http_error.TooManyRequests("Rate limit reached, please try again later")
 		},
 	})
 }

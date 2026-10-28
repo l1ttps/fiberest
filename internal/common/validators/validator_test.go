@@ -2,7 +2,12 @@ package validators
 
 import (
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+
+	"fiberest/internal/common/types"
+	"fiberest/pkg/http_error"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
@@ -276,7 +281,7 @@ func TestParseAndValidate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a mock Fiber context
-			app := fiber.New()
+			app := fiber.New(fiber.Config{ErrorHandler: http_error.NewHandler(nil)})
 			c := app.AcquireCtx(&fasthttp.RequestCtx{})
 			defer app.ReleaseCtx(c)
 
@@ -298,38 +303,80 @@ func TestParseAndValidate(t *testing.T) {
 	}
 }
 
-// TestResponseError tests the ResponseError function
-func TestResponseError(t *testing.T) {
+// TestInvalid tests that bind/validation failures become 400 http_errors.
+func TestInvalid(t *testing.T) {
 	tests := []struct {
-		name        string
-		err         error
-		expectedMsg string
+		name string
+		err  error
 	}{
-		{
-			name:        "simple error",
-			err:         errors.New("test error"),
-			expectedMsg: "test error",
-		},
-		{
-			name:        "validation error",
-			err:         ValidationErrors{{Field: "email", Message: "invalid email"}},
-			expectedMsg: "invalid email",
-		},
+		{name: "simple error", err: errors.New("test error")},
+		{name: "validation error", err: ValidationErrors{{Field: "email", Message: "invalid email"}}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := fiber.New()
-			c := app.AcquireCtx(&fasthttp.RequestCtx{})
-			defer app.ReleaseCtx(c)
-
-			err := ResponseError(c, tt.err)
-			assert.NoError(t, err)
-
-			assert.Equal(t, fiber.StatusBadRequest, c.Response().StatusCode())
+			var e *http_error.Error
+			require.ErrorAs(t, Invalid(tt.err), &e)
+			assert.Equal(t, fiber.StatusBadRequest, e.Status)
+			assert.NotNil(t, e.Details, "field details must ride along")
 		})
 	}
 }
+
+// TestGetQueryPaginationDefaults is the regression test for `GET /users`
+// returning 400 when ?limit/?page are omitted.
+func TestGetQueryPaginationDefaults(t *testing.T) {
+	type query struct {
+		types.GetManyRequest
+		Role string `query:"role" validate:"omitempty,oneof=ADMIN USER"`
+	}
+
+	app := fiber.New(fiber.Config{ErrorHandler: http_error.NewHandler(nil)})
+	var got query
+	app.Get("/users", func(c fiber.Ctx) error {
+		got = query{}
+		if err := GetQuery(c, &got); err != nil {
+			return Invalid(err)
+		}
+		return c.SendString("ok")
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/users", nil))
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode, "no query params must not be a 400")
+	assert.Equal(t, 10, got.Limit)
+	assert.Equal(t, 1, got.Page)
+
+	// Out-of-range values are still rejected.
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/users?limit=101", nil))
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+}
+
+// TestGetParamValidatesUUID covers the "invalid path id becomes a 500" bug.
+func TestGetParamValidatesUUID(t *testing.T) {
+	type params struct {
+		ID string `param:"id" validate:"required,uuid"`
+	}
+
+	app := fiber.New(fiber.Config{ErrorHandler: http_error.NewHandler(nil)})
+	app.Get("/users/:id", func(c fiber.Ctx) error {
+		var p params
+		if err := GetParam(c, &p); err != nil {
+			return Invalid(err)
+		}
+		return c.SendString(p.ID)
+	})
+
+	resp, err := app.Test(httptest.NewRequest(http.MethodGet, "/users/not-a-uuid", nil))
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusBadRequest, resp.StatusCode)
+
+	resp, err = app.Test(httptest.NewRequest(http.MethodGet, "/users/1b4e28ba-2fa1-11d2-883f-0016d3cca427", nil))
+	require.NoError(t, err)
+	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
+}
+
 
 // TestValidationErrors_Error tests the Error method with various scenarios
 func TestValidationErrors_Error(t *testing.T) {

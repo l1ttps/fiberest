@@ -19,7 +19,7 @@ const docTemplate = `{
     "paths": {
         "/auth/change-password": {
             "post": {
-                "description": "Changes the authenticated user's password. Requires the current password to be verified before setting the new password.",
+                "description": "Changes the authenticated user's password. Requires the current password. Every other session of the user is revoked.",
                 "consumes": [
                     "application/json"
                 ],
@@ -145,6 +145,12 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/http_error.ErrorResponse"
                         }
+                    },
+                    "429": {
+                        "description": "Too Many Requests",
+                        "schema": {
+                            "$ref": "#/definitions/http_error.ErrorResponse"
+                        }
                     }
                 }
             }
@@ -177,7 +183,7 @@ const docTemplate = `{
         },
         "/auth/session": {
             "get": {
-                "description": "Returns the current active session details.",
+                "description": "Returns the current active session details. The session token is never included.",
                 "produces": [
                     "application/json"
                 ],
@@ -189,7 +195,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.Session"
+                            "$ref": "#/definitions/dto.SessionResponse"
                         }
                     },
                     "401": {
@@ -216,21 +222,17 @@ const docTemplate = `{
                         "maximum": 100,
                         "minimum": 1,
                         "type": "integer",
-                        "example": 10,
+                        "default": 10,
+                        "description": "Items per page",
                         "name": "limit",
                         "in": "query"
                     },
                     {
                         "minimum": 1,
                         "type": "integer",
-                        "example": 1,
+                        "default": 1,
+                        "description": "Page number",
                         "name": "page",
-                        "in": "query"
-                    },
-                    {
-                        "maxLength": 100,
-                        "type": "string",
-                        "name": "search",
                         "in": "query"
                     }
                 ],
@@ -269,7 +271,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Session ID",
+                        "description": "Session ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -302,7 +304,7 @@ const docTemplate = `{
         },
         "/users": {
             "get": {
-                "description": "Returns a paginated list of all users in the system with support for pagination, search by name/email, and filtering by user role (ADMIN or USER). Response includes comprehensive pagination metadata: total users count, current page number, total pages, and items per page.",
+                "description": "Returns a paginated list of all users in the system with support for pagination, search by name/email, and filtering by user role (ADMIN or USER).",
                 "consumes": [
                     "application/json"
                 ],
@@ -360,6 +362,18 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/http_error.ErrorResponse"
                         }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/http_error.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/http_error.ErrorResponse"
+                        }
                     }
                 }
             },
@@ -413,7 +427,7 @@ const docTemplate = `{
         },
         "/users/me": {
             "patch": {
-                "description": "Allows an authenticated user to update their profile (name and email). User ID is extracted from the session token.",
+                "description": "Allows an authenticated user to update their profile (name). User ID comes from the session.",
                 "consumes": [
                     "application/json"
                 ],
@@ -426,7 +440,7 @@ const docTemplate = `{
                 "summary": "Update my profile",
                 "parameters": [
                     {
-                        "description": "Profile data (name required, email optional)",
+                        "description": "Profile data",
                         "name": "request",
                         "in": "body",
                         "required": true,
@@ -439,7 +453,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.User"
+                            "$ref": "#/definitions/dto.UserResponse"
                         }
                     },
                     "400": {
@@ -450,12 +464,6 @@ const docTemplate = `{
                     },
                     "401": {
                         "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/http_error.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/http_error.ErrorResponse"
                         }
@@ -479,7 +487,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "User ID",
+                        "description": "User ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -535,7 +543,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "User ID",
+                        "description": "User ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -582,7 +590,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "User ID",
+                        "description": "User ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -592,7 +600,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.User"
+                            "$ref": "#/definitions/dto.UserResponse"
                         }
                     },
                     "400": {
@@ -624,7 +632,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "User ID",
+                        "description": "User ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -643,7 +651,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/models.User"
+                            "$ref": "#/definitions/dto.UserResponse"
                         }
                     },
                     "400": {
@@ -681,7 +689,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "User ID",
+                        "description": "User ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -722,7 +730,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "User ID",
+                        "description": "User ID (UUID)",
                         "name": "id",
                         "in": "path",
                         "required": true
@@ -853,6 +861,9 @@ const docTemplate = `{
                 "page": {
                     "type": "integer"
                 },
+                "pageCount": {
+                    "type": "integer"
+                },
                 "total": {
                     "type": "integer"
                 }
@@ -874,6 +885,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "page": {
+                    "type": "integer"
+                },
+                "pageCount": {
                     "type": "integer"
                 },
                 "total": {
@@ -1044,114 +1058,20 @@ const docTemplate = `{
         "http_error.ErrorResponse": {
             "type": "object",
             "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "details": {},
                 "message": {
+                    "type": "string"
+                },
+                "requestId": {
                     "type": "string"
                 },
                 "status": {
                     "type": "integer"
                 }
             }
-        },
-        "models.Session": {
-            "type": "object",
-            "properties": {
-                "createdAt": {
-                    "description": "CreatedAt tracks when the record was created\nAutomatically set by GORM on create",
-                    "type": "string"
-                },
-                "expiresAt": {
-                    "description": "ExpiresAt is when this session becomes invalid",
-                    "type": "string"
-                },
-                "id": {
-                    "description": "ID is the primary key using UUID v4 format\nGORM tag ensures it's stored as uuid type in PostgreSQL with primary key constraint",
-                    "type": "string"
-                },
-                "ipAddress": {
-                    "description": "IPAddress stores the IP address where the session was created",
-                    "type": "string"
-                },
-                "rememberMe": {
-                    "description": "RememberMe indicates if this session should persist longer (remember me)",
-                    "type": "boolean"
-                },
-                "sessionToken": {
-                    "description": "SessionToken is the unique token for this session (stored in cookie)",
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "description": "UpdatedAt tracks when the record was last modified\nAutomatically updated by GORM on save/update",
-                    "type": "string"
-                },
-                "user": {
-                    "description": "User relationship (many sessions belong to one user)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/models.User"
-                        }
-                    ]
-                },
-                "userAgent": {
-                    "description": "UserAgent stores the browser/user agent string",
-                    "type": "string"
-                },
-                "userId": {
-                    "description": "UserID is the foreign key to the user",
-                    "type": "string"
-                }
-            }
-        },
-        "models.User": {
-            "type": "object",
-            "properties": {
-                "banReason": {
-                    "description": "BanReason is the reason why the user was banned",
-                    "type": "string"
-                },
-                "banUntil": {
-                    "description": "BanUntil is the time when the ban expires. If null, the ban is permanent.",
-                    "type": "string"
-                },
-                "createdAt": {
-                    "description": "CreatedAt tracks when the record was created\nAutomatically set by GORM on create",
-                    "type": "string"
-                },
-                "email": {
-                    "description": "Email is the unique identifier for login\nMust be unique and not null",
-                    "type": "string"
-                },
-                "id": {
-                    "description": "ID is the primary key using UUID v4 format\nGORM tag ensures it's stored as uuid type in PostgreSQL with primary key constraint",
-                    "type": "string"
-                },
-                "name": {
-                    "description": "Name is the display name of the user",
-                    "type": "string"
-                },
-                "role": {
-                    "description": "Role determines user permissions (ADMIN or USER)",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/models.UserRole"
-                        }
-                    ]
-                },
-                "updatedAt": {
-                    "description": "UpdatedAt tracks when the record was last modified\nAutomatically updated by GORM on save/update",
-                    "type": "string"
-                }
-            }
-        },
-        "models.UserRole": {
-            "type": "string",
-            "enum": [
-                "ADMIN",
-                "USER"
-            ],
-            "x-enum-varnames": [
-                "RoleAdmin",
-                "RoleUser"
-            ]
         }
     }
 }`

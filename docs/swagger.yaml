@@ -62,6 +62,8 @@ definitions:
         type: integer
       page:
         type: integer
+      pageCount:
+        type: integer
       total:
         type: integer
     type: object
@@ -76,6 +78,8 @@ definitions:
       limit:
         type: integer
       page:
+        type: integer
+      pageCount:
         type: integer
       total:
         type: integer
@@ -190,98 +194,16 @@ definitions:
     type: object
   http_error.ErrorResponse:
     properties:
+      code:
+        type: string
+      details: {}
       message:
+        type: string
+      requestId:
         type: string
       status:
         type: integer
     type: object
-  models.Session:
-    properties:
-      createdAt:
-        description: |-
-          CreatedAt tracks when the record was created
-          Automatically set by GORM on create
-        type: string
-      expiresAt:
-        description: ExpiresAt is when this session becomes invalid
-        type: string
-      id:
-        description: |-
-          ID is the primary key using UUID v4 format
-          GORM tag ensures it's stored as uuid type in PostgreSQL with primary key constraint
-        type: string
-      ipAddress:
-        description: IPAddress stores the IP address where the session was created
-        type: string
-      rememberMe:
-        description: RememberMe indicates if this session should persist longer (remember
-          me)
-        type: boolean
-      sessionToken:
-        description: SessionToken is the unique token for this session (stored in
-          cookie)
-        type: string
-      updatedAt:
-        description: |-
-          UpdatedAt tracks when the record was last modified
-          Automatically updated by GORM on save/update
-        type: string
-      user:
-        allOf:
-        - $ref: '#/definitions/models.User'
-        description: User relationship (many sessions belong to one user)
-      userAgent:
-        description: UserAgent stores the browser/user agent string
-        type: string
-      userId:
-        description: UserID is the foreign key to the user
-        type: string
-    type: object
-  models.User:
-    properties:
-      banReason:
-        description: BanReason is the reason why the user was banned
-        type: string
-      banUntil:
-        description: BanUntil is the time when the ban expires. If null, the ban is
-          permanent.
-        type: string
-      createdAt:
-        description: |-
-          CreatedAt tracks when the record was created
-          Automatically set by GORM on create
-        type: string
-      email:
-        description: |-
-          Email is the unique identifier for login
-          Must be unique and not null
-        type: string
-      id:
-        description: |-
-          ID is the primary key using UUID v4 format
-          GORM tag ensures it's stored as uuid type in PostgreSQL with primary key constraint
-        type: string
-      name:
-        description: Name is the display name of the user
-        type: string
-      role:
-        allOf:
-        - $ref: '#/definitions/models.UserRole'
-        description: Role determines user permissions (ADMIN or USER)
-      updatedAt:
-        description: |-
-          UpdatedAt tracks when the record was last modified
-          Automatically updated by GORM on save/update
-        type: string
-    type: object
-  models.UserRole:
-    enum:
-    - ADMIN
-    - USER
-    type: string
-    x-enum-varnames:
-    - RoleAdmin
-    - RoleUser
 host: localhost:3278
 info:
   contact:
@@ -296,7 +218,7 @@ paths:
       consumes:
       - application/json
       description: Changes the authenticated user's password. Requires the current
-        password to be verified before setting the new password.
+        password. Every other session of the user is revoked.
       parameters:
       - description: Change password request
         in: body
@@ -380,6 +302,10 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
       summary: User authentication login
       tags:
       - Auth
@@ -403,14 +329,15 @@ paths:
       - Auth
   /auth/session:
     get:
-      description: Returns the current active session details.
+      description: Returns the current active session details. The session token is
+        never included.
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.Session'
+            $ref: '#/definitions/dto.SessionResponse'
         "401":
           description: Unauthorized
           schema:
@@ -423,21 +350,19 @@ paths:
       description: Retrieves a paginated list of sessions for the currently authenticated
         user.
       parameters:
-      - example: 10
+      - default: 10
+        description: Items per page
         in: query
         maximum: 100
         minimum: 1
         name: limit
         type: integer
-      - example: 1
+      - default: 1
+        description: Page number
         in: query
         minimum: 1
         name: page
         type: integer
-      - in: query
-        maxLength: 100
-        name: search
-        type: string
       produces:
       - application/json
       responses:
@@ -461,7 +386,7 @@ paths:
       description: Deletes a specific session for the authenticated user. The session
         must belong to the current user.
       parameters:
-      - description: Session ID
+      - description: Session ID (UUID)
         in: path
         name: id
         required: true
@@ -490,10 +415,9 @@ paths:
     get:
       consumes:
       - application/json
-      description: 'Returns a paginated list of all users in the system with support
+      description: Returns a paginated list of all users in the system with support
         for pagination, search by name/email, and filtering by user role (ADMIN or
-        USER). Response includes comprehensive pagination metadata: total users count,
-        current page number, total pages, and items per page.'
+        USER).
       parameters:
       - default: 10
         description: 'Number of items per page (default: 10, max: 100)'
@@ -528,6 +452,14 @@ paths:
             $ref: '#/definitions/dto.GetManyUsersExample'
         "400":
           description: Bad Request
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/http_error.ErrorResponse'
+        "403":
+          description: Forbidden
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
       summary: Get many users
@@ -572,7 +504,7 @@ paths:
       description: Permanently removes a user from the system by their unique identifier.
         Returns 204 No Content on success.
       parameters:
-      - description: User ID
+      - description: User ID (UUID)
         in: path
         name: id
         required: true
@@ -600,7 +532,7 @@ paths:
         their unique identifier. Returns a 404 Not Found error if no user exists with
         the provided ID.
       parameters:
-      - description: User ID
+      - description: User ID (UUID)
         in: path
         name: id
         required: true
@@ -611,7 +543,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.User'
+            $ref: '#/definitions/dto.UserResponse'
         "400":
           description: Bad Request
           schema:
@@ -629,7 +561,7 @@ paths:
       description: Updates user information (email, name, role) by user ID. Only provided
         fields will be updated. Returns updated user data.
       parameters:
-      - description: User ID
+      - description: User ID (UUID)
         in: path
         name: id
         required: true
@@ -646,7 +578,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.User'
+            $ref: '#/definitions/dto.UserResponse'
         "400":
           description: Bad Request
           schema:
@@ -669,7 +601,7 @@ paths:
       description: Bans a user with a reason and an optional expiration date. Only
         admins can perform this action.
       parameters:
-      - description: User ID
+      - description: User ID (UUID)
         in: path
         name: id
         required: true
@@ -704,10 +636,10 @@ paths:
     patch:
       consumes:
       - application/json
-      description: Allows an authenticated user to update their profile (name and
-        email). User ID is extracted from the session token.
+      description: Allows an authenticated user to update their profile (name). User
+        ID comes from the session.
       parameters:
-      - description: Profile data (name required, email optional)
+      - description: Profile data
         in: body
         name: request
         required: true
@@ -719,17 +651,13 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/models.User'
+            $ref: '#/definitions/dto.UserResponse'
         "400":
           description: Bad Request
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
         "401":
           description: Unauthorized
-          schema:
-            $ref: '#/definitions/http_error.ErrorResponse'
-        "409":
-          description: Conflict
           schema:
             $ref: '#/definitions/http_error.ErrorResponse'
       summary: Update my profile
@@ -742,7 +670,7 @@ paths:
       description: Sets or updates the password for a user's EMAIL authentication
         account. Only admins can set passwords for any user.
       parameters:
-      - description: User ID
+      - description: User ID (UUID)
         in: path
         name: id
         required: true
@@ -779,7 +707,7 @@ paths:
       - application/json
       description: Lifts the ban from a user. Only admins can perform this action.
       parameters:
-      - description: User ID
+      - description: User ID (UUID)
         in: path
         name: id
         required: true

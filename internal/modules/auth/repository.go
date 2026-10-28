@@ -20,7 +20,6 @@ type Repository interface {
 	CreateUser(ctx context.Context, user *models.User) error
 	CreateAccount(ctx context.Context, account *models.Account) error
 	FindUserByEmail(ctx context.Context, email string) (*models.User, error)
-	FindUserByID(ctx context.Context, id string) (*models.User, error)
 	FindAccount(ctx context.Context, userID uuid.UUID, accountType models.AccountType) (*models.Account, error)
 	UpdateAccountPassword(ctx context.Context, account *models.Account, hashedPassword string) error
 	CreateSession(ctx context.Context, session *models.Session) error
@@ -28,8 +27,9 @@ type Repository interface {
 	FindSessionByID(ctx context.Context, id uuid.UUID) (*models.Session, error)
 	DeleteSessionByToken(ctx context.Context, token string) error
 	DeleteSessionByID(ctx context.Context, id uuid.UUID) error
+	DeleteSessionsByUserIDExceptToken(ctx context.Context, userID uuid.UUID, keepToken string) error
 	FindSessionsByUserID(ctx context.Context, userID string, limit, offset int) ([]models.Session, int64, error)
-	UpdateSession(ctx context.Context, session *models.Session, fields map[string]interface{}) error
+	UpdateSession(ctx context.Context, session *models.Session, fields map[string]any) error
 }
 
 type gormRepository struct {
@@ -64,14 +64,6 @@ func (r *gormRepository) CreateAccount(ctx context.Context, account *models.Acco
 func (r *gormRepository) FindUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	var user models.User
 	if err := r.getDB(ctx).Where("email = ?", email).First(&user).Error; err != nil {
-		return nil, err
-	}
-	return &user, nil
-}
-
-func (r *gormRepository) FindUserByID(ctx context.Context, id string) (*models.User, error) {
-	var user models.User
-	if err := r.getDB(ctx).Where("id = ?", id).First(&user).Error; err != nil {
 		return nil, err
 	}
 	return &user, nil
@@ -117,6 +109,12 @@ func (r *gormRepository) DeleteSessionByID(ctx context.Context, id uuid.UUID) er
 	return r.getDB(ctx).Where("id = ?", id).Delete(&models.Session{}).Error
 }
 
+func (r *gormRepository) DeleteSessionsByUserIDExceptToken(ctx context.Context, userID uuid.UUID, keepToken string) error {
+	return r.getDB(ctx).
+		Where("user_id = ? AND session_token <> ?", userID, keepToken).
+		Delete(&models.Session{}).Error
+}
+
 func (r *gormRepository) FindSessionsByUserID(ctx context.Context, userID string, limit, offset int) ([]models.Session, int64, error) {
 	var total int64
 	if err := r.getDB(ctx).Model(&models.Session{}).Where("user_id = ?", userID).Count(&total).Error; err != nil {
@@ -129,6 +127,6 @@ func (r *gormRepository) FindSessionsByUserID(ctx context.Context, userID string
 	return sessions, total, nil
 }
 
-func (r *gormRepository) UpdateSession(ctx context.Context, session *models.Session, fields map[string]interface{}) error {
+func (r *gormRepository) UpdateSession(ctx context.Context, session *models.Session, fields map[string]any) error {
 	return r.getDB(ctx).Model(session).Updates(fields).Error
 }

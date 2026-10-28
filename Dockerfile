@@ -6,6 +6,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 # docs/ is committed; no swag generation needed in build (keeps image small).
+# CI verifies docs/ is not stale (`swag init` + `git diff --exit-code docs/`).
 # If docs missing, uncomment next line and add swag install:
 # RUN go install github.com/swaggo/swag/cmd/swag@latest && swag init -g cmd/server/main.go -o docs
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app/server ./cmd/server/main.go

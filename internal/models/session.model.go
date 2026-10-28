@@ -10,8 +10,9 @@ import (
 type Session struct {
 	BaseModel
 
-	// SessionToken is the unique token for this session (stored in cookie)
-	SessionToken string `gorm:"uniqueIndex;not null;size:255" json:"sessionToken"`
+	// SessionToken is the unique token for this session (stored in the cookie).
+	// Never serialized: exposing it in a response body would defeat HttpOnly.
+	SessionToken string `gorm:"uniqueIndex;not null;size:255" json:"-"`
 
 	// UserID is the foreign key to the user
 	UserID uuid.UUID `gorm:"not null;index" json:"userId"`

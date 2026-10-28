@@ -1,11 +1,13 @@
 package dto
 
 import (
-	"fiberest/internal/common/types"
 	"time"
+
+	"fiberest/internal/common/types"
+	"fiberest/internal/models"
 )
 
-// UserResponse represents a user in the response (without sensitive data like password)
+// UserResponse represents a user in responses (never includes the password).
 type UserResponse struct {
 	ID        string     `json:"id"`
 	Email     string     `json:"email"`
@@ -15,21 +17,30 @@ type UserResponse struct {
 	BanUntil  *time.Time `json:"banUntil"`
 }
 
+// NewUserResponse maps a model to its client view.
+func NewUserResponse(u *models.User) UserResponse {
+	return UserResponse{
+		ID:        u.ID.String(),
+		Email:     u.Email,
+		Name:      u.Name,
+		Role:      string(u.Role),
+		BanReason: u.BanReason,
+		BanUntil:  u.BanUntil,
+	}
+}
+
 // GetManyUsersRequest extends the common GetManyRequest for user-specific queries.
-// It embeds types.GetManyRequest to inherit pagination fields (Limit, Page, Search).
+// Limit/Page stay optional via types.GetManyRequest.SetDefaults.
 type GetManyUsersRequest struct {
 	types.GetManyRequest
 	// Role is an optional filter for user role (ADMIN or USER)
 	Role string `query:"role" validate:"omitempty,oneof=ADMIN USER"`
 }
 
-// GetManyUsersExample is a concrete type for Swagger documentation
+// GetManyUsersExample is the concrete paginated response for Swagger.
 type GetManyUsersExample struct {
-	Data        []UserResponse `json:"data"`
-	Limit       int            `json:"limit"`
-	Page        int            `json:"page"`
-	HasNextPage bool           `json:"hasNextPage"`
-	Total       int64          `json:"total"`
+	Data []UserResponse `json:"data"`
+	types.PageMeta
 }
 
 // UpdateMyProfileRequest defines the payload for updating own profile

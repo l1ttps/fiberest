@@ -22,9 +22,7 @@ type DatabaseService struct {
 	slog   *slog.Logger
 }
 
-// NewDatabaseService creates a new DatabaseService instance (config-driven).
-// Logger is optional — when nil, slog.Default() is used to avoid fx cycles
-// and to keep direct construction simple in tests.
+// NewDatabaseService connects to PostgreSQL using the typed config.
 func NewDatabaseService(config *configs.Config, logger *slog.Logger) (*DatabaseService, error) {
 	if logger == nil {
 		logger = slog.Default()
@@ -66,15 +64,13 @@ func (s *DatabaseService) Connect() error {
 
 // newGormConfig builds a gorm.Config with log level derived from cfg.DB.LogLevel.
 func newGormConfig(cfg *configs.Config) *gorm.Config {
-	level := mapGormLogLevel(cfg.DB.LogLevel)
 	return &gorm.Config{
-		Logger: gormlogger.Default.LogMode(level),
+		Logger: gormlogger.Default.LogMode(mapGormLogLevel(cfg.DB.LogLevel)),
 	}
 }
 
-// mapGormLogLevel maps DB_LOG_LEVEL string to gorm logger level.
+// mapGormLogLevel maps DB_LOG_LEVEL to a gorm logger level (case-insensitive).
 // silent→Silent, error→Error, warn→Warn, info→Info; unknown → Silent.
-// Case-insensitive.
 func mapGormLogLevel(s string) gormlogger.LogLevel {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "silent":
@@ -91,7 +87,6 @@ func mapGormLogLevel(s string) gormlogger.LogLevel {
 }
 
 // applyPoolSettings configures the sql.DB pool from typed Config.
-// MaxLifetime comes from cfg.DB.MaxLifetime; idle time uses a 15m default.
 //
 // ponytail: 15m ConnMaxIdleTime is a fixed operational default, not yet config-driven;
 // upgrade path is adding DB_CONN_MAX_IDLE_TIME to Config and reading it here when needed.
@@ -102,22 +97,12 @@ func applyPoolSettings(sqlDB *sql.DB, cfg *configs.Config) {
 	sqlDB.SetConnMaxIdleTime(15 * time.Minute)
 }
 
-// buildDSN constructs PostgreSQL connection string from configuration
+// buildDSN constructs the PostgreSQL connection string from typed config.
 func (s *DatabaseService) buildDSN() string {
-	host := s.config.GetString("DB_HOST")
-	port := s.config.GetString("DB_PORT")
-	user := s.config.GetString("DB_USER")
-	password := s.config.GetString("DB_PASSWORD")
-	dbname := s.config.GetString("DB_NAME")
-
-	sslmode := s.config.GetString("DB_SSLMODE")
-	if sslmode == "" {
-		sslmode = "disable"
-	}
-
+	cfg := s.config
 	return fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		host, port, user, password, dbname, sslmode,
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		cfg.DB.Host, cfg.DB.Port, cfg.DB.User, cfg.DB.Password, cfg.DB.Name, cfg.DB.SSLMode,
 	)
 }
 

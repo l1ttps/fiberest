@@ -7,45 +7,31 @@ import (
 
 	"fiberest/internal/configs"
 
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func newTestConfig(logLevel, logFormat, env string) *configs.Config {
-	viper.Reset()
-	viper.SetDefault("LOG_LEVEL", logLevel)
-	viper.SetDefault("LOG_FORMAT", logFormat)
-	viper.SetDefault("APP_ENV", env)
-	cfg, err := configs.NewConfig()
-	if err != nil {
-		panic(err)
-	}
-	// Override directly for test isolation
+func newTestConfig(logLevel, logFormat string) *configs.Config {
+	cfg := &configs.Config{}
 	cfg.Log.Level = logLevel
 	cfg.Log.Format = logFormat
-	cfg.App.Env = env
+	cfg.App.Env = "development"
 	return cfg
 }
 
 func TestNewLogger_LevelAndFormat(t *testing.T) {
-	cfg := newTestConfig("debug", "json", "development")
-	l := NewLogger(cfg)
+	l := NewLogger(newTestConfig("debug", "json"))
 	require.NotNil(t, l)
 	assert.True(t, l.Enabled(context.TODO(), slog.LevelDebug))
 	assert.True(t, l.Enabled(context.TODO(), slog.LevelInfo))
 
-	cfg2 := newTestConfig("error", "text", "development")
-	l2 := NewLogger(cfg2)
+	l2 := NewLogger(newTestConfig("error", "text"))
 	assert.False(t, l2.Enabled(context.TODO(), slog.LevelInfo))
 	assert.True(t, l2.Enabled(context.TODO(), slog.LevelError))
 }
 
 func TestWithRequestID(t *testing.T) {
-	cfg := newTestConfig("info", "text", "development")
-	l := NewLogger(cfg)
-	wrapped := WithRequestID(l, "abc-123")
+	wrapped := WithRequestID(NewLogger(newTestConfig("info", "text")), "abc-123")
 	require.NotNil(t, wrapped)
-	// Should not panic when logging
-	wrapped.Info("test message")
+	require.NotPanics(t, func() { wrapped.Info("test message") })
 }

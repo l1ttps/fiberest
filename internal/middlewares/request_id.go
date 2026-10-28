@@ -5,10 +5,14 @@ import (
 	"github.com/google/uuid"
 )
 
-const RequestIDHeader = "X-Request-ID"
-const RequestIDLocalKey = "request_id"
+const (
+	// RequestIDHeader is both the inbound and outbound correlation header.
+	// pkg/http_error carries a copy so it need not import internal.
+	RequestIDHeader   = "X-Request-ID"
+	RequestIDLocalKey = "request_id"
+)
 
-// RequestID generates or propagates X-Request-ID, stores in header and locals.
+// RequestID propagates or generates X-Request-ID and stores it in locals.
 func RequestID() fiber.Handler {
 	return func(c fiber.Ctx) error {
 		id := c.Get(RequestIDHeader)
@@ -17,13 +21,11 @@ func RequestID() fiber.Handler {
 		}
 		c.Set(RequestIDHeader, id)
 		c.Locals(RequestIDLocalKey, id)
-		// Also set response header explicitly for clients
-		c.Set(RequestIDHeader, id)
 		return c.Next()
 	}
 }
 
-// GetRequestID retrieves request id from context locals.
+// GetRequestID retrieves the request id from locals (falls back to the header).
 func GetRequestID(c fiber.Ctx) string {
 	if v, ok := c.Locals(RequestIDLocalKey).(string); ok {
 		return v

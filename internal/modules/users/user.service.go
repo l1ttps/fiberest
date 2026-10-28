@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"fiberest/internal/common/pagination"
-	"fiberest/internal/common/types"
+	"fiberest/internal/configs"
 	"fiberest/internal/models"
 	"fiberest/internal/modules/users/dto"
 
@@ -19,7 +18,6 @@ import (
 var (
 	ErrUserNotFound      = errors.New("user not found")
 	ErrUserAlreadyExists = errors.New("user already exists")
-	ErrAdminExists       = errors.New("admin user already exists")
 )
 
 // UserService defines the business logic for user management
@@ -34,19 +32,18 @@ type UserService interface {
 	DeleteUser(ctx context.Context, id string) error
 	BanUser(ctx context.Context, id string, reason string, until *time.Time) error
 	UnbanUser(ctx context.Context, id string) error
-	GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest) (*types.GetManyResponse[dto.UserResponse], error)
+	GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest) ([]dto.UserResponse, int64, error)
 }
 
 // service handles user-related business logic and responses
 type service struct {
 	repo Repository
+	cfg  *configs.Config
 }
 
 // NewService creates a new user service instance
-func NewService(repo Repository) UserService {
-	return &service{
-		repo: repo,
-	}
+func NewService(repo Repository, cfg *configs.Config) UserService {
+	return &service{repo: repo, cfg: cfg}
 }
 
 // CreateUser creates a new user with specified role
@@ -84,7 +81,7 @@ func (s *service) CreateUserWithPassword(ctx context.Context, email string, pass
 
 	hashedPassword, err := s.hashPassword(password)
 	if err != nil {
-		return nil, fmt.Errorf("failed to hash password: %w", err)
+		return nil, err
 	}
 
 	user := &models.User{
@@ -130,28 +127,18 @@ func (s *service) FindByID(ctx context.Context, id string) (*models.User, error)
 }
 
 // GetManyUsers retrieves a paginated list of users with total count.
-func (s *service) GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest) (*types.GetManyResponse[dto.UserResponse], error) {
+func (s *service) GetManyUsers(ctx context.Context, req dto.GetManyUsersRequest) ([]dto.UserResponse, int64, error) {
 	offset := (req.Page - 1) * req.Limit
 	users, total, err := s.repo.List(ctx, req.Limit, offset, req.Role, req.Search)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch users: %w", err)
+		return nil, 0, fmt.Errorf("failed to fetch users: %w", err)
 	}
 
-	userResponses := make([]dto.UserResponse, len(users))
-	for i, user := range users {
-		userResponses[i] = dto.UserResponse{
-			ID:        user.ID.String(),
-			Email:     user.Email,
-			Name:      user.Name,
-			Role:      string(user.Role),
-			BanReason: user.BanReason,
-			BanUntil:  user.BanUntil,
-		}
+	out := make([]dto.UserResponse, len(users))
+	for i := range users {
+		out[i] = dto.NewUserResponse(&users[i])
 	}
-
-	response := pagination.GetManyResponse(req.GetManyRequest, userResponses, total)
-
-	return &response, nil
+	return out, total, nil
 }
 
 // UpdateMyProfile updates the current user's own profile information
@@ -172,12 +159,6 @@ func (s *service) UpdateMyProfile(ctx context.Context, userID string, req dto.Up
 
 // UpdateUser updates user information by ID
 func (s *service) UpdateUser(ctx context.Context, id string, req dto.UpdateUserRequest) (*models.User, error) {
-	if req.Role != "" {
-		if req.Role != string(models.RoleAdmin) && req.Role != string(models.RoleUser) {
-			return nil, fmt.Errorf("invalid role: %s", req.Role)
-		}
-	}
-
 	user, err := s.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -197,6 +178,7 @@ func (s *service) UpdateUser(ctx context.Context, id string, req dto.UpdateUserR
 		user.Name = req.Name
 	}
 	if req.Role != "" {
+		// Role is validated by the DTO (oneof=ADMIN USER).
 		user.Role = models.UserRole(req.Role)
 	}
 
@@ -209,8 +191,7 @@ func (s *service) UpdateUser(ctx context.Context, id string, req dto.UpdateUserR
 
 // DeleteUser removes a user by ID
 func (s *service) DeleteUser(ctx context.Context, id string) error {
-	_, err := s.FindByID(ctx, id)
-	if err != nil {
+	if _, err := s.FindByID(ctx, id); err != nil {
 		return err
 	}
 
@@ -255,9 +236,13 @@ func (s *service) UnbanUser(ctx context.Context, id string) error {
 	return nil
 }
 
-// hashPassword hashes a plain text password using bcrypt
+// hashPassword hashes a plain text password using the configured bcrypt cost.
 func (s *service) hashPassword(password string) (string, error) {
-	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	cost := bcrypt.DefaultCost
+	if s.cfg != nil && s.cfg.Auth.BcryptCost >= bcrypt.MinCost && s.cfg.Auth.BcryptCost <= bcrypt.MaxCost {
+		cost = s.cfg.Auth.BcryptCost
+	}
+	hashedBytes, err := bcrypt.GenerateFromPassword([]byte(password), cost)
 	if err != nil {
 		return "", fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -266,9 +251,13 @@ func (s *service) hashPassword(password string) (string, error) {
 
 // SetPassword sets a new password for a user by creating/updating their EMAIL account
 func (s *service) SetPassword(ctx context.Context, userID string, password string) error {
-	_, err := s.FindByID(ctx, userID)
-	if err != nil {
+	if _, err := s.FindByID(ctx, userID); err != nil {
 		return err
+	}
+
+	userUUID, err := uuid.Parse(userID)
+	if err != nil {
+		return ErrUserNotFound
 	}
 
 	hashedPassword, err := s.hashPassword(password)
@@ -276,13 +265,9 @@ func (s *service) SetPassword(ctx context.Context, userID string, password strin
 		return err
 	}
 
-	userUUID, err := uuid.Parse(userID)
-	if err != nil {
-		return fmt.Errorf("invalid user ID format: %w", err)
-	}
-
 	account, err := s.repo.FindAccount(ctx, userUUID, models.AccountTypeEmail)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
 		account = &models.Account{
 			UserID:    userUUID,
 			Type:      models.AccountTypeEmail,
@@ -292,9 +277,9 @@ func (s *service) SetPassword(ctx context.Context, userID string, password strin
 		if err := s.repo.CreateAccount(ctx, account); err != nil {
 			return fmt.Errorf("failed to create account: %w", err)
 		}
-	} else if err != nil {
+	case err != nil:
 		return fmt.Errorf("failed to find account: %w", err)
-	} else {
+	default:
 		account.Password = hashedPassword
 		if err := s.repo.SaveAccount(ctx, account); err != nil {
 			return fmt.Errorf("failed to update account password: %w", err)

@@ -4,32 +4,31 @@ import (
 	"os"
 	"testing"
 
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func resetViper() {
-	viper.Reset()
-	// Clear relevant env so tests are isolated
+func clearEnv(t *testing.T) {
+	t.Helper()
 	for _, k := range []string{
 		"PORT", "APP_ENV", "APP_NAME",
 		"DB_HOST", "DB_PORT", "DB_USER", "DB_PASSWORD", "DB_NAME", "DB_SSLMODE",
-		"DB_MAX_IDLE_CONNS", "DB_MAX_OPEN_CONNS", "DB_MAX_LIFETIME", "DB_LOG_LEVEL",
+		"DB_MAX_IDLE_CONNS", "DB_MAX_OPEN_CONNS", "DB_MAX_LIFETIME", "DB_LOG_LEVEL", "DB_AUTO_MIGRATE",
 		"CORS_ALLOW_ORIGINS", "CORS_ALLOW_CREDENTIALS",
 		"LOG_LEVEL", "LOG_FORMAT",
-		"SESSION_DURATION", "BCRYPT_COST",
+		"SESSION_DURATION", "BCRYPT_COST", "SESSION_COOKIE_SECURE",
 	} {
 		_ = os.Unsetenv(k)
 	}
 }
 
 func TestNewConfig_defaults(t *testing.T) {
-	resetViper()
+	clearEnv(t)
 	cfg, err := NewConfig()
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
-	assert.Equal(t, 3278, cfg.App.Port, "App.Port default 3278")
+
+	assert.Equal(t, 3278, cfg.App.Port)
 	assert.Equal(t, "development", cfg.App.Env)
 	assert.Equal(t, "Fiberest", cfg.App.Name)
 	assert.Equal(t, "localhost", cfg.DB.Host)
@@ -39,52 +38,63 @@ func TestNewConfig_defaults(t *testing.T) {
 	assert.Equal(t, 100, cfg.DB.MaxOpenConns)
 	assert.Equal(t, "silent", cfg.DB.LogLevel)
 	assert.Equal(t, "info", cfg.Log.Level)
-	// text in development, json in production — default env is development
-	assert.Equal(t, "text", cfg.Log.Format)
-	require.NotEmpty(t, cfg.CORS.AllowOrigins, "dev should default CORS to *")
-	assert.Equal(t, "*", cfg.CORS.AllowOrigins[0])
-	assert.NotZero(t, cfg.Auth.SessionDuration)
+	assert.Equal(t, "text", cfg.Log.Format, "non-production defaults to text")
+	assert.Equal(t, []string{"*"}, cfg.CORS.AllowOrigins, "dev defaults CORS to *")
+	assert.Equal(t, 168, int(cfg.Auth.SessionDuration.Hours()), "SESSION_DURATION defaults to 168h")
 	assert.Equal(t, 10, cfg.Auth.BcryptCost)
-	// validate duration approx 168h
-	assert.GreaterOrEqual(t, int64(cfg.DB.MaxLifetime), int64(0))
+
+	// Conditional defaults: development may auto-migrate, cookies stay plain http.
+	assert.True(t, cfg.DB.AutoMigrate)
+	assert.False(t, cfg.Auth.CookieSecure)
 }
 
-func TestNewConfig_invalidPort_returnsError(t *testing.T) {
-	resetViper()
-	t.Setenv("PORT", "99999")
-	_, err := NewConfig()
-	require.Error(t, err, "PORT=99999 beyond 65535 must fail validation")
-}
+func TestNewConfig_productionDefaults(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("APP_ENV", "production")
 
-func TestNewConfig_invalidLogLevel_returnsError(t *testing.T) {
-	resetViper()
-	t.Setenv("LOG_LEVEL", "verbose")
-	_, err := NewConfig()
-	require.Error(t, err, "LOG_LEVEL=verbose not in debug|info|warn|error")
-}
-
-func TestNewConfig_legacyGetStringStillWorks(t *testing.T) {
-	resetViper()
 	cfg, err := NewConfig()
 	require.NoError(t, err)
-	// Legacy accessors must delegate to viper and see the same defaults.
-	assert.Equal(t, "3278", cfg.GetString("PORT"))
-	assert.Equal(t, 3278, cfg.GetInt("PORT"))
-	assert.NotNil(t, cfg.Get("PORT"))
-	// DB defaults visible via legacy too
-	assert.Equal(t, "localhost", cfg.GetString("DB_HOST"))
+	assert.Equal(t, "json", cfg.Log.Format)
+	assert.Empty(t, cfg.CORS.AllowOrigins, "production must not default to *")
+	assert.False(t, cfg.DB.AutoMigrate, "auto-migrate is off in production by default")
+	assert.True(t, cfg.Auth.CookieSecure)
 }
 
-func TestNewConfig_invalidDBPort_returnsError(t *testing.T) {
-	resetViper()
-	t.Setenv("DB_PORT", "99999")
-	_, err := NewConfig()
-	require.Error(t, err)
+func TestNewConfig_envOverridesDefaults(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("PORT", "8080")
+	t.Setenv("SESSION_DURATION", "24h")
+	t.Setenv("CORS_ALLOW_ORIGINS", "https://a.example, https://b.example")
+	t.Setenv("BCRYPT_COST", "12")
+	t.Setenv("DB_AUTO_MIGRATE", "false")
+	t.Setenv("SESSION_COOKIE_SECURE", "true")
+
+	cfg, err := NewConfig()
+	require.NoError(t, err)
+	assert.Equal(t, 8080, cfg.App.Port)
+	assert.Equal(t, 24, int(cfg.Auth.SessionDuration.Hours()))
+	assert.Equal(t, []string{"https://a.example", "https://b.example"}, cfg.CORS.AllowOrigins)
+	assert.Equal(t, 12, cfg.Auth.BcryptCost)
+	assert.False(t, cfg.DB.AutoMigrate)
+	assert.True(t, cfg.Auth.CookieSecure)
 }
 
-func TestNewConfig_invalidLogFormat_returnsError(t *testing.T) {
-	resetViper()
-	t.Setenv("LOG_FORMAT", "yaml")
-	_, err := NewConfig()
-	require.Error(t, err)
+func TestNewConfig_invalidValues_returnError(t *testing.T) {
+	values := map[string]string{
+		"PORT":             "99999",
+		"LOG_LEVEL":        "verbose",
+		"LOG_FORMAT":       "yaml",
+		"DB_PORT":          "99999",
+		"SESSION_DURATION": "one week",
+		"BCRYPT_COST":      "99",
+	}
+
+	for key, value := range values {
+		t.Run(key+"="+value, func(t *testing.T) {
+			clearEnv(t)
+			t.Setenv(key, value)
+			_, err := NewConfig()
+			require.Error(t, err)
+		})
+	}
 }
