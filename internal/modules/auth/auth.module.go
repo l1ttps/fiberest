@@ -14,8 +14,8 @@ var Module = fx.Options(
 	fx.Provide(NewController),
 	fx.Invoke(RegisterRoutes),
 	// Database auto-migration for auth models
-	fx.Invoke(func(db *database.DatabaseService) {
-		db.GetDB().AutoMigrate(
+	fx.Invoke(func(db *database.DatabaseService) error {
+		return db.GetDB().AutoMigrate(
 			&models.Account{},
 			&models.Session{},
 		)

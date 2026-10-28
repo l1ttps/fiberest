@@ -202,7 +202,7 @@ func (s *service) FindValidSession(ctx context.Context, sessionToken string) (*m
 	}
 
 	if !session.IsValid() {
-		s.DeleteSession(ctx, sessionToken)
+		_ = s.DeleteSession(ctx, sessionToken)
 		return nil, errors.New("session expired")
 	}
 

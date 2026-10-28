@@ -18,10 +18,6 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
-func resetViperForDBTest() {
-	viper.Reset()
-}
-
 // helper to make config without env pollution
 func newTestDBConfig(t *testing.T) *configs.Config {
 	t.Helper()
@@ -82,7 +78,7 @@ func TestApplyPoolSettings_FromConfig(t *testing.T) {
 
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	_ = mock
 
 	applyPoolSettings(db, cfg)
@@ -102,7 +98,7 @@ func TestPoolSettings_RespectsConfigValues_ViaGormDB(t *testing.T) {
 
 	sqlDB, mock, err := sqlmock.New()
 	require.NoError(t, err)
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 	mock.ExpectClose()
 
 	dialector := postgres.New(postgres.Config{Conn: sqlDB})
@@ -164,7 +160,7 @@ func TestApplyPoolSettings_SetsIdleTime(t *testing.T) {
 	// We can't directly read ConnMaxIdleTime from sql.DB via Stats, so test that helper exists and doesn't panic
 	sqlDB, _, err := sqlmock.New()
 	require.NoError(t, err)
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 	require.NotPanics(t, func() { applyPoolSettings(sqlDB, cfg) })
 	_ = capturedIdle
 	_ = sqlDB

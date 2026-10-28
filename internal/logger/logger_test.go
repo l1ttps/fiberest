@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"context"
 	"log/slog"
 	"testing"
 
@@ -31,13 +32,13 @@ func TestNewLogger_LevelAndFormat(t *testing.T) {
 	cfg := newTestConfig("debug", "json", "development")
 	l := NewLogger(cfg)
 	require.NotNil(t, l)
-	assert.True(t, l.Enabled(nil, slog.LevelDebug))
-	assert.True(t, l.Enabled(nil, slog.LevelInfo))
+	assert.True(t, l.Enabled(context.TODO(), slog.LevelDebug))
+	assert.True(t, l.Enabled(context.TODO(), slog.LevelInfo))
 
 	cfg2 := newTestConfig("error", "text", "development")
 	l2 := NewLogger(cfg2)
-	assert.False(t, l2.Enabled(nil, slog.LevelInfo))
-	assert.True(t, l2.Enabled(nil, slog.LevelError))
+	assert.False(t, l2.Enabled(context.TODO(), slog.LevelInfo))
+	assert.True(t, l2.Enabled(context.TODO(), slog.LevelError))
 }
 
 func TestWithRequestID(t *testing.T) {

@@ -102,14 +102,14 @@ func GetQuery(ctx fiber.Ctx, dest interface{}) error {
 // Uses struct tags with `param:"key"` to map path parameters to struct fields
 func GetParam(ctx fiber.Ctx, dest interface{}) error {
 	val := reflect.ValueOf(dest)
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
-	
+
 	if val.Kind() != reflect.Struct {
 		return errors.New("dest must be a struct or struct pointer")
 	}
-	
+
 	typ := val.Type()
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
@@ -118,7 +118,7 @@ func GetParam(ctx fiber.Ctx, dest interface{}) error {
 			// Use field name as param key if tag not specified
 			paramKey = field.Name
 		}
-		
+
 		paramValue := ctx.Params(paramKey)
 		if paramValue == "" {
 			// Check if field is required via validate tag
@@ -128,13 +128,13 @@ func GetParam(ctx fiber.Ctx, dest interface{}) error {
 			// Continue if not required
 			continue
 		}
-		
+
 		// Set the field value
 		if err := setFieldValue(val.Field(i), paramValue, field.Type); err != nil {
 			return fmt.Errorf("failed to set param %s: %w", paramKey, err)
 		}
 	}
-	
+
 	return ValidateStruct(dest)
 }
 
@@ -143,7 +143,7 @@ func setFieldValue(field reflect.Value, value string, typ reflect.Type) error {
 	if !field.CanSet() {
 		return fmt.Errorf("cannot set field")
 	}
-	
+
 	switch typ.Kind() {
 	case reflect.String:
 		field.SetString(value)
@@ -174,7 +174,7 @@ func setFieldValue(field reflect.Value, value string, typ reflect.Type) error {
 	default:
 		return fmt.Errorf("unsupported type: %s", typ.Kind())
 	}
-	
+
 	return nil
 }
 
