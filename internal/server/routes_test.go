@@ -23,7 +23,7 @@ func (fakeAuth) FindSessionBySessionId(context.Context, string) (*models.Session
 	return nil, auth.ErrSessionNotFound
 }
 func (fakeAuth) UpdateExpiresSession(context.Context, *models.Session) error { return nil }
-func (fakeAuth) DeleteSession(context.Context, string) error               { return nil }
+func (fakeAuth) DeleteSession(context.Context, string) error                 { return nil }
 
 func newTestApp(t *testing.T) *fiber.App {
 	t.Helper()

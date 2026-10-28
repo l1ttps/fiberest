@@ -377,7 +377,6 @@ func TestGetParamValidatesUUID(t *testing.T) {
 	assert.Equal(t, fiber.StatusOK, resp.StatusCode)
 }
 
-
 // TestValidationErrors_Error tests the Error method with various scenarios
 func TestValidationErrors_Error(t *testing.T) {
 	tests := []struct {
